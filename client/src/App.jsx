@@ -28,6 +28,7 @@ function App() {
 
     // 방 생성 성공
     socket.on('roomCreated', ({ roomId, room }) => {
+      console.log('🏠 Room created:', roomId);
       setRoomId(roomId);
       setRoomData(room);
       setCurrentPage('lobby');
@@ -84,8 +85,11 @@ function App() {
   };
 
   const createLiarRoom = (name) => {
+    console.log('🎭 Creating liar room for:', name);
     setPlayerName(name);
+    // gameType을 먼저 설정 (roomCreated 이벤트가 오기 전에)
     setGameType('liar');
+    console.log('🎭 GameType set to: liar');
     socket.emit('createLiarRoom', {
       playerName: name
     });
@@ -108,6 +112,9 @@ function App() {
       </div>
     );
   }
+
+  // 디버깅용 로그
+  console.log('🔍 App render - currentPage:', currentPage, 'gameType:', gameType);
 
   return (
     <div className="min-h-screen bg-mafia-dark">
