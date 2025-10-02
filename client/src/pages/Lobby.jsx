@@ -75,6 +75,12 @@ export default function Lobby({ socket, roomId, roomData, setRoomData, playerNam
     alert('방 코드가 복사되었습니다!');
   };
 
+  const shareRoomURL = () => {
+    const shareURL = `${window.location.origin}/funny/?room=${roomId}`;
+    navigator.clipboard.writeText(shareURL);
+    alert('방 링크가 복사되었습니다!\n친구에게 공유해보세요.');
+  };
+
   if (!roomData) return null;
 
   const currentPlayer = roomData.players.find(p => p.id === socket?.id);
@@ -89,7 +95,7 @@ export default function Lobby({ socket, roomId, roomData, setRoomData, playerNam
             <h1 className="text-3xl font-bold text-mafia-accent">
               🎭 대기실
             </h1>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <p className="text-mafia-light">
                 방 코드: <span className="font-mono font-bold text-xl">{roomId}</span>
               </p>
@@ -97,7 +103,13 @@ export default function Lobby({ socket, roomId, roomData, setRoomData, playerNam
                 onClick={copyRoomCode}
                 className="px-3 py-1 bg-mafia-secondary hover:bg-mafia-primary rounded text-sm transition-colors"
               >
-                📋 복사
+                📋 코드 복사
+              </button>
+              <button
+                onClick={shareRoomURL}
+                className="px-3 py-1 bg-mafia-accent hover:bg-red-600 rounded text-sm transition-colors"
+              >
+                🔗 링크 공유
               </button>
             </div>
           </div>

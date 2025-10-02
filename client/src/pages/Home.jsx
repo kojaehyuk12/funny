@@ -1,9 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-export default function Home({ onCreateRoom, onJoinRoom }) {
+export default function Home({ onCreateRoom, onJoinRoom, autoJoinRoom }) {
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+
+  // URL로 방 코드가 전달되면 자동 세팅
+  useEffect(() => {
+    if (autoJoinRoom) {
+      setRoomId(autoJoinRoom.toUpperCase());
+    }
+  }, [autoJoinRoom]);
   const [settings, setSettings] = useState({
     minPlayers: 1, // 테스트용: 1명으로 변경
     maxPlayers: 12,
@@ -39,7 +46,7 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
+      <div className="max-w-5xl w-full">
         {/* 타이틀 */}
         <div className="text-center mb-8 animate-fade-in">
           <h1 className="text-6xl font-bold text-mafia-accent mb-2">
@@ -50,37 +57,39 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
           </p>
         </div>
 
-        {/* 메인 카드 */}
-        <div className="card animate-slide-up">
-          {/* 닉네임 입력 */}
-          <div className="mb-6">
-            <label className="block text-mafia-light font-semibold mb-2">
-              닉네임
-            </label>
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="닉네임을 입력하세요"
-              maxLength={12}
-              className="w-full px-4 py-3 bg-mafia-secondary text-mafia-light rounded-lg border border-mafia-dark focus:border-mafia-accent focus:outline-none transition-colors"
-            />
-          </div>
+        {/* 닉네임 입력 */}
+        <div className="card mb-6 animate-slide-up">
+          <label className="block text-mafia-light font-semibold mb-2">
+            닉네임
+          </label>
+          <input
+            type="text"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            placeholder="닉네임을 입력하세요"
+            maxLength={12}
+            className="w-full px-4 py-3 bg-mafia-secondary text-mafia-light rounded-lg border border-mafia-dark focus:border-mafia-accent focus:outline-none transition-colors"
+          />
+        </div>
 
+        {/* 방 만들기 / 참가하기 가로 배치 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-slide-up">
           {/* 방 만들기 */}
-          <div className="mb-4">
+          <div className="card">
+            <h2 className="text-2xl font-bold text-mafia-accent mb-4">🎮 방 만들기</h2>
+
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className="btn-primary w-full mb-2"
+              className="btn-primary w-full mb-4"
             >
-              🎮 방 만들기
+              {showSettings ? '설정 닫기' : '게임 설정'}
             </button>
 
             {showSettings && (
-              <div className="mt-4 p-4 bg-mafia-secondary rounded-lg space-y-3 animate-fade-in">
+              <div className="p-4 bg-mafia-secondary rounded-lg space-y-3 animate-fade-in mb-4">
                 <div>
                   <label className="block text-sm text-mafia-light mb-1">
-                    최대 인원: {settings.maxPlayers}명 (테스트: 1명부터 가능)
+                    최대 인원: {settings.maxPlayers}명
                   </label>
                   <input
                     type="range"
@@ -97,7 +106,7 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
 
                 <div>
                   <label className="block text-sm text-mafia-light mb-1">
-                    낮 시간: {settings.dayDuration}초 (빠른 테스트: 10~120초)
+                    낮 시간: {settings.dayDuration}초
                   </label>
                   <input
                     type="range"
@@ -115,7 +124,7 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
 
                 <div>
                   <label className="block text-sm text-mafia-light mb-1">
-                    밤 시간: {settings.nightDuration}초 (빠른 테스트: 5~60초)
+                    밤 시간: {settings.nightDuration}초
                   </label>
                   <input
                     type="range"
@@ -130,26 +139,21 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
                     className="w-full"
                   />
                 </div>
-
-                <button
-                  onClick={handleCreateRoom}
-                  className="btn-primary w-full mt-2"
-                >
-                  생성하기
-                </button>
               </div>
             )}
+
+            <button
+              onClick={handleCreateRoom}
+              className="btn-primary w-full text-lg py-4"
+            >
+              방 생성하기
+            </button>
           </div>
 
-          {/* 구분선 */}
-          <div className="flex items-center my-6">
-            <div className="flex-1 border-t border-mafia-secondary"></div>
-            <span className="px-4 text-mafia-light text-sm">또는</span>
-            <div className="flex-1 border-t border-mafia-secondary"></div>
-          </div>
+          {/* 방 참가하기 */}
+          <div className="card">
+            <h2 className="text-2xl font-bold text-mafia-accent mb-4">🚪 방 참가하기</h2>
 
-          {/* 방 참가 */}
-          <div>
             <label className="block text-mafia-light font-semibold mb-2">
               방 코드
             </label>
@@ -157,24 +161,23 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
               type="text"
               value={roomId}
               onChange={(e) => setRoomId(e.target.value.toUpperCase())}
-              placeholder="방 코드를 입력하세요"
+              placeholder="6자리 방 코드 입력"
               maxLength={6}
-              className="w-full px-4 py-3 bg-mafia-secondary text-mafia-light rounded-lg border border-mafia-dark focus:border-mafia-accent focus:outline-none transition-colors mb-3"
+              className="w-full px-4 py-3 bg-mafia-secondary text-mafia-light rounded-lg border border-mafia-dark focus:border-mafia-accent focus:outline-none transition-colors mb-4 text-center text-2xl font-mono tracking-widest"
             />
+
             <button
               onClick={handleJoinRoom}
-              className="btn-secondary w-full"
+              className="btn-secondary w-full text-lg py-4"
             >
-              🚪 방 참가하기
+              참가하기
             </button>
           </div>
         </div>
 
         {/* 게임 설명 */}
-        <div className="mt-6 text-center text-mafia-light text-sm opacity-75">
-          <p>👥 4-16명이 함께 플레이</p>
-          <p>⏰ 시간 단축 가능</p>
-          <p>💬 실시간 채팅</p>
+        <div className="mt-8 text-center text-mafia-light text-sm opacity-75 space-y-1">
+          <p>👥 1-16명이 함께 플레이 | ⏰ 시간 단축 가능 | 💬 실시간 채팅</p>
         </div>
       </div>
     </div>

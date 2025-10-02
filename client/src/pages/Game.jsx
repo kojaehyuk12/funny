@@ -201,12 +201,26 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
             </div>
           </div>
 
-          <button
-            onClick={onLeave}
-            className="btn-primary"
-          >
-            🏠 홈으로 돌아가기
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setGameOver(null);
+                window.location.href = '/funny/';
+              }}
+              className="flex-1 btn-primary"
+            >
+              🏠 홈으로
+            </button>
+            <button
+              onClick={() => {
+                setGameOver(null);
+                onLeave();
+              }}
+              className="flex-1 btn-secondary"
+            >
+              🔄 다시하기
+            </button>
+          </div>
         </div>
       </div>
     );

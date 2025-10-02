@@ -71,7 +71,7 @@ export class Room {
     this.status = 'playing';
     this.day = 1;
     this.assignRoles();
-    this.startNightPhase();
+    this.startDayPhase(); // 첫날 아침부터 시작
   }
 
   assignRoles() {
@@ -255,7 +255,8 @@ export class Room {
           name: targetPlayer.name
         });
       }
-    } else if (mafiaTarget === doctorTarget) {
+    } else if (mafiaTarget && mafiaTarget === doctorTarget) {
+      // 마피아가 공격했지만 의사가 살린 경우에만 메시지 표시
       results.saved.push(mafiaTarget);
     }
 

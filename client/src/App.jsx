@@ -10,6 +10,16 @@ function App() {
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState(null);
   const [roomData, setRoomData] = useState(null);
+  const [autoJoinRoom, setAutoJoinRoom] = useState(null);
+
+  // URL 파라미터에서 방 코드 확인
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const roomCode = params.get('room');
+    if (roomCode) {
+      setAutoJoinRoom(roomCode);
+    }
+  }, []);
 
   useEffect(() => {
     if (!socket) return;
@@ -89,7 +99,11 @@ function App() {
   return (
     <div className="min-h-screen bg-mafia-dark">
       {currentPage === 'home' && (
-        <Home onCreateRoom={createRoom} onJoinRoom={joinRoom} />
+        <Home
+          onCreateRoom={createRoom}
+          onJoinRoom={joinRoom}
+          autoJoinRoom={autoJoinRoom}
+        />
       )}
       {currentPage === 'lobby' && (
         <Lobby
