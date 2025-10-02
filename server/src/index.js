@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { GameManager } from './game/GameManager.js';
+import { LiarGameManager } from './game/LiarGameManager.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -55,6 +56,7 @@ const io = new Server(httpServer, {
 
 // 게임 매니저 인스턴스
 const gameManager = new GameManager(io);
+const liarGameManager = new LiarGameManager(io);
 
 // 기본 라우트
 app.get('/', (req, res) => {
@@ -119,10 +121,73 @@ io.on('connection', (socket) => {
     gameManager.updateSettings(socket, roomId, newSettings);
   });
 
+  // ===== 라이어 게임 이벤트 =====
+
+  // 라이어 방 생성
+  socket.on('createLiarRoom', ({ playerName }) => {
+    try {
+      const { roomId, room } = liarGameManager.createRoom(socket.id, playerName);
+      socket.join(roomId);
+      socket.emit('roomCreated', { roomId, room });
+      console.log(`🎭 Liar room created: ${roomId} by ${playerName}`);
+    } catch (error) {
+      socket.emit('error', { message: '방 생성 실패' });
+    }
+  });
+
+  // 라이어 방 참가
+  socket.on('joinLiarRoom', ({ roomId, playerName }) => {
+    try {
+      const result = liarGameManager.joinRoom(socket.id, playerName, roomId);
+      if (result.success) {
+        socket.join(roomId);
+        socket.emit('roomJoined', { roomId, room: result.room });
+        io.to(roomId).emit('playerJoined', { player: { id: socket.id, name: playerName }, room: result.room });
+      } else {
+        socket.emit('error', { message: result.message });
+      }
+    } catch (error) {
+      socket.emit('error', { message: '방 참가 실패' });
+    }
+  });
+
+  // 라이어 게임 시작
+  socket.on('startLiarGame', ({ roomId }) => {
+    try {
+      const result = liarGameManager.startGame(roomId);
+      if (!result.success) {
+        socket.emit('error', { message: result.message });
+      }
+    } catch (error) {
+      socket.emit('error', { message: '게임 시작 실패' });
+    }
+  });
+
+  // 턴 메시지
+  socket.on('liarTurnMessage', ({ roomId, message }) => {
+    liarGameManager.handleTurnMessage(roomId, socket.id, message);
+  });
+
+  // 자유 채팅 메시지
+  socket.on('liarFreeMessage', ({ roomId, message }) => {
+    liarGameManager.handleFreeMessage(roomId, socket.id, message);
+  });
+
+  // 투표
+  socket.on('liarVote', ({ roomId, targetId }) => {
+    liarGameManager.handleVote(roomId, socket.id, targetId);
+  });
+
+  // 제시어 추측
+  socket.on('liarGuessKeyword', ({ roomId, keyword }) => {
+    liarGameManager.handleKeywordGuess(roomId, socket.id, keyword);
+  });
+
   // 연결 해제
   socket.on('disconnect', () => {
     console.log(`❌ User disconnected: ${socket.id}`);
     gameManager.handleDisconnect(socket);
+    // 라이어 게임도 처리 필요시 추가
   });
 });
 
