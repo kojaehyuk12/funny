@@ -7,9 +7,23 @@ import { GameManager } from './game/GameManager.js';
 const app = express();
 const httpServer = createServer(app);
 
+// 허용할 오리진 목록
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://kojaehyuk12.github.io',
+  process.env.CLIENT_URL
+].filter(Boolean);
+
 // CORS 설정
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // origin이 없는 경우 (같은 도메인) 또는 허용 목록에 있는 경우
+    if (!origin || allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
@@ -18,7 +32,13 @@ app.use(express.json());
 // Socket.IO 설정
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true
   },
