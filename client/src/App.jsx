@@ -29,9 +29,14 @@ function App() {
     });
 
     // 게임 시작
-    socket.on('gameStarted', ({ room }) => {
+    socket.on('gameStarted', ({ room, playerRoles }) => {
       console.log('🎮 Game started, room data:', room);
-      setRoomData(room);
+      console.log('🎭 Player roles:', playerRoles);
+
+      setRoomData({
+        ...room,
+        playerRoles: playerRoles  // 역할 정보 저장
+      });
       setCurrentPage('game');
     });
 

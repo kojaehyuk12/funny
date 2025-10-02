@@ -99,28 +99,25 @@ export class GameManager {
 
     console.log(`🎮 Game started in room: ${roomId}, players:`, room.players.size);
 
-    // 각 플레이어에게 개별적으로 역할 정보 전송 (게임 시작 전에 먼저)
+    // 모든 플레이어의 역할 정보를 맵으로 만들기
+    const playerRoles = {};
     room.players.forEach((player, playerId) => {
       const roleInfo = room.getRoleInfo(player.role);
-      console.log(`📨 Sending role to ${player.name} (${playerId}): ${player.role}`, roleInfo ? '✅' : '❌ NULL');
+      console.log(`📨 Preparing role for ${player.name} (${playerId}): ${player.role}`, roleInfo ? '✅' : '❌ NULL');
 
-      if (roleInfo) {
-        this.io.to(playerId).emit('roleAssigned', {
-          role: player.role,
-          roleInfo: roleInfo
-        });
-      } else {
-        console.error(`❌ Failed to get role info for ${player.role}`);
-      }
+      playerRoles[playerId] = {
+        role: player.role,
+        roleInfo: roleInfo
+      };
     });
 
-    // 약간의 지연 후 게임 시작 알림 (역할 배정이 먼저 도착하도록)
-    setTimeout(() => {
-      this.io.to(roomId).emit('gameStarted', {
-        room: room.getState()
-      });
-      console.log(`✅ gameStarted event sent to room: ${roomId}`);
-    }, 200);
+    // 게임 시작 알림과 함께 역할 정보도 전송
+    this.io.to(roomId).emit('gameStarted', {
+      room: room.getState(),
+      playerRoles: playerRoles  // 각 플레이어의 역할 정보 포함
+    });
+
+    console.log(`✅ gameStarted event sent to room: ${roomId} with roles:`, Object.keys(playerRoles));
   }
 
   voteSkipTime(socket, roomId) {

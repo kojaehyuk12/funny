@@ -13,12 +13,23 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
   const [timeLeft, setTimeLeft] = useState(0);
   const [gameOver, setGameOver] = useState(null);
 
+  // roomData에서 내 역할 정보 추출
+  useEffect(() => {
+    if (roomData?.playerRoles && socket?.id) {
+      const myRoleData = roomData.playerRoles[socket.id];
+      if (myRoleData) {
+        console.log('✅ Role found in roomData:', myRoleData);
+        setMyRole({ role: myRoleData.role, info: myRoleData.roleInfo });
+      }
+    }
+  }, [roomData, socket]);
+
   useEffect(() => {
     if (!socket) return;
 
-    // 역할 배정
+    // 역할 배정 (백업용 - 혹시 개별 전송되면 받기)
     socket.on('roleAssigned', ({ role, roleInfo }) => {
-      console.log('✅ Role assigned:', role, roleInfo);
+      console.log('✅ Role assigned via event:', role, roleInfo);
       setMyRole({ role, info: roleInfo });
     });
 
