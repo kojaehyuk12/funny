@@ -15,14 +15,14 @@ export class Room {
     this.skipTimeVotes = new Set();
 
     this.settings = {
-      minPlayers: settings.minPlayers || 4,
+      minPlayers: settings.minPlayers || 1, // 1명으로 테스트 가능
       maxPlayers: settings.maxPlayers || 12,
-      dayDuration: settings.dayDuration || 120, // 초
-      nightDuration: settings.nightDuration || 60, // 초
+      dayDuration: settings.dayDuration || 30, // 30초로 단축 (테스트용)
+      nightDuration: settings.nightDuration || 20, // 20초로 단축 (테스트용)
       roles: settings.roles || {
-        mafia: 2,
-        doctor: 1,
-        police: 1,
+        mafia: 1, // 1명만
+        doctor: 0,
+        police: 0,
         citizen: 0 // 나머지는 자동으로 시민
       }
     };
@@ -208,6 +208,11 @@ export class Room {
       }
     });
 
+    // 1명일 경우 자동으로 완료 처리
+    if (this.players.size === 1) {
+      return true;
+    }
+
     return this.nightActions.size >= requiredActions;
   }
 
@@ -274,6 +279,11 @@ export class Room {
     this.players.forEach(player => {
       if (!player.isDead) aliveCount++;
     });
+
+    // 1명일 경우 자동으로 완료 (투표 스킵)
+    if (aliveCount === 1) {
+      return true;
+    }
 
     return this.dayVotes.size >= aliveCount;
   }

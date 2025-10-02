@@ -5,14 +5,14 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
   const [roomId, setRoomId] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState({
-    minPlayers: 4,
+    minPlayers: 1, // 테스트용: 1명으로 변경
     maxPlayers: 12,
-    dayDuration: 120,
-    nightDuration: 60,
+    dayDuration: 30, // 테스트용: 30초로 단축
+    nightDuration: 20, // 테스트용: 20초로 단축
     roles: {
-      mafia: 2,
-      doctor: 1,
-      police: 1,
+      mafia: 1, // 테스트용: 1명만
+      doctor: 0,
+      police: 0,
       citizen: 0
     }
   });
@@ -80,11 +80,11 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
               <div className="mt-4 p-4 bg-mafia-secondary rounded-lg space-y-3 animate-fade-in">
                 <div>
                   <label className="block text-sm text-mafia-light mb-1">
-                    최대 인원: {settings.maxPlayers}명
+                    최대 인원: {settings.maxPlayers}명 (테스트: 1명부터 가능)
                   </label>
                   <input
                     type="range"
-                    min="4"
+                    min="1"
                     max="16"
                     value={settings.maxPlayers}
                     onChange={(e) => setSettings({
@@ -97,13 +97,13 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
 
                 <div>
                   <label className="block text-sm text-mafia-light mb-1">
-                    낮 시간: {settings.dayDuration}초
+                    낮 시간: {settings.dayDuration}초 (빠른 테스트: 10~120초)
                   </label>
                   <input
                     type="range"
-                    min="60"
-                    max="300"
-                    step="30"
+                    min="10"
+                    max="120"
+                    step="10"
                     value={settings.dayDuration}
                     onChange={(e) => setSettings({
                       ...settings,
@@ -115,13 +115,13 @@ export default function Home({ onCreateRoom, onJoinRoom }) {
 
                 <div>
                   <label className="block text-sm text-mafia-light mb-1">
-                    밤 시간: {settings.nightDuration}초
+                    밤 시간: {settings.nightDuration}초 (빠른 테스트: 5~60초)
                   </label>
                   <input
                     type="range"
-                    min="30"
-                    max="120"
-                    step="15"
+                    min="5"
+                    max="60"
+                    step="5"
                     value={settings.nightDuration}
                     onChange={(e) => setSettings({
                       ...settings,
