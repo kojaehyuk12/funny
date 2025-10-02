@@ -73,6 +73,14 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
       setPhase(phase);
     });
 
+    // 채팅 메시지 수신 (즉시 업데이트)
+    socket.on('chatMessage', (message) => {
+      setRoomData(prev => ({
+        ...prev,
+        chatMessages: [...(prev.chatMessages || []), message]
+      }));
+    });
+
     return () => {
       socket.off('roleAssigned');
       socket.off('phaseChanged');
@@ -81,6 +89,7 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
       socket.off('gameOver');
       socket.off('timeSkipVoted');
       socket.off('timeSkipped');
+      socket.off('chatMessage');
     };
   }, [socket, setRoomData]);
 

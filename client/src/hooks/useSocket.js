@@ -10,10 +10,16 @@ export const useSocket = () => {
   useEffect(() => {
     const socketInstance = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
+      upgrade: true,
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 3000,
+      reconnectionAttempts: 10,
+      timeout: 10000,
+      forceNew: false,
+      // 채팅 성능 최적화
+      autoConnect: true,
+      closeOnBeforeunload: false
     });
 
     socketInstance.on('connect', () => {

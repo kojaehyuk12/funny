@@ -21,7 +21,16 @@ const io = new Server(httpServer, {
     origin: process.env.CLIENT_URL || 'http://localhost:5173',
     methods: ['GET', 'POST'],
     credentials: true
-  }
+  },
+  // 성능 최적화 설정
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 10000,
+  maxHttpBufferSize: 1e6,
+  transports: ['websocket', 'polling'],
+  allowUpgrades: true,
+  perMessageDeflate: false, // 압축 비활성화로 지연시간 감소
+  httpCompression: false
 });
 
 // 게임 매니저 인스턴스

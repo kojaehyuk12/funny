@@ -37,11 +37,20 @@ export default function Lobby({ socket, roomId, roomData, setRoomData, playerNam
       setRoomData(room);
     });
 
+    // 채팅 메시지 수신 (즉시 업데이트)
+    socket.on('chatMessage', (message) => {
+      setRoomData(prev => ({
+        ...prev,
+        chatMessages: [...(prev.chatMessages || []), message]
+      }));
+    });
+
     return () => {
       socket.off('playerJoined');
       socket.off('playerLeft');
       socket.off('hostChanged');
       socket.off('playerReadyUpdate');
+      socket.off('chatMessage');
     };
   }, [socket, setRoomData]);
 
