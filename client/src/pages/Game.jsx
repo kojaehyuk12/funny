@@ -106,12 +106,25 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
     socket.emit('voteSkipTime', { roomId });
   };
 
-  if (!roomData || !myRole) {
+  if (!roomData) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-mafia-accent mx-auto mb-4"></div>
-          <p className="text-mafia-light text-xl">게임 로딩 중...</p>
+          <p className="text-mafia-light text-xl">게임 데이터 로딩 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!myRole) {
+    console.log('⚠️ Role not assigned yet, roomData:', roomData);
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-mafia-accent mx-auto mb-4"></div>
+          <p className="text-mafia-light text-xl">역할 배정 중...</p>
+          <p className="text-mafia-light text-sm mt-2 opacity-75">잠시만 기다려주세요</p>
         </div>
       </div>
     );
