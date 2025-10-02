@@ -23,17 +23,15 @@ export const useSocket = () => {
     });
 
     socketInstance.on('connect', () => {
-      console.log('✅ Connected to server');
       setIsConnected(true);
     });
 
     socketInstance.on('disconnect', () => {
-      console.log('❌ Disconnected from server');
       setIsConnected(false);
     });
 
-    socketInstance.on('error', (error) => {
-      console.error('Socket error:', error);
+    socketInstance.on('error', () => {
+      // Error handling without logging
     });
 
     setSocket(socketInstance);

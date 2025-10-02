@@ -38,7 +38,6 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
 
     const myRoleData = roomData.playerRoles[socket.id];
     if (myRoleData) {
-      console.log('✅ Role from roomData:', myRoleData);
       setMyRole({ role: myRoleData.role, info: myRoleData.roleInfo });
     }
   }, [roomData, socket]);
@@ -48,7 +47,6 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
     if (!socket) return;
 
     socket.on('phaseChanged', (data) => {
-      console.log('📍 Phase changed:', data.phase, data);
       setPhase(data.phase);
       setDay(data.day || 1);
       setTimeLeft(data.duration || 0);

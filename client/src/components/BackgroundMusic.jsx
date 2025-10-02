@@ -20,8 +20,7 @@ export default function BackgroundMusic({ track, volume = 0.3 }) {
       try {
         await audioRef.current.load();
         await audioRef.current.play();
-      } catch (error) {
-        console.log('자동 재생 실패:', error);
+      } catch {
         // 사용자 상호작용 후 재생하도록 이벤트 리스너 추가
         const handleUserInteraction = async () => {
           try {
@@ -30,8 +29,8 @@ export default function BackgroundMusic({ track, volume = 0.3 }) {
               document.removeEventListener('click', handleUserInteraction);
               document.removeEventListener('keydown', handleUserInteraction);
             }
-          } catch (err) {
-            console.log('재생 실패:', err);
+          } catch {
+            // Ignore playback errors
           }
         };
         document.addEventListener('click', handleUserInteraction, { once: true });

@@ -74,7 +74,6 @@ app.get('/api/rooms', (req, res) => {
 
 // Socket.IO 연결 처리
 io.on('connection', (socket) => {
-  console.log(`✅ User connected: ${socket.id}`);
 
   // 방 생성
   socket.on('createRoom', ({ playerName, roomSettings }) => {
@@ -134,7 +133,6 @@ io.on('connection', (socket) => {
       const { roomId, room } = liarGameManager.createRoom(socket.id, playerName);
       socket.join(roomId);
       socket.emit('roomCreated', { roomId, room });
-      console.log(`🎭 Liar room created: ${roomId} by ${playerName}`);
     } catch (error) {
       socket.emit('error', { message: '방 생성 실패' });
     }
@@ -195,7 +193,6 @@ io.on('connection', (socket) => {
 
   // 연결 해제
   socket.on('disconnect', () => {
-    console.log(`❌ User disconnected: ${socket.id}`);
     gameManager.leaveRoom(socket);
   });
 });
@@ -203,6 +200,5 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 
 httpServer.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🎮 Mafia Game Server is ready!`);
+  // Server ready
 });

@@ -20,8 +20,6 @@ export class GameManager {
       roomId: room.id,
       room: room.getState()
     });
-
-    console.log(`🎲 Room created: ${room.id} by ${playerName}`);
   }
 
   joinRoom(socket, roomId, playerName) {
@@ -55,8 +53,6 @@ export class GameManager {
       player: room.players.get(socket.id),
       room: room.getState()
     });
-
-    console.log(`👤 ${playerName} joined room: ${roomId}`);
   }
 
   // 듀얼 채팅 시스템
@@ -101,8 +97,6 @@ export class GameManager {
           this.io.to(pId).emit('mafiaChat', chatMessage);
         }
       });
-
-      console.log(`🔪 Mafia chat in ${roomId}: #${player.anonymousNumber}: ${message}`);
     } else {
       // 일반 채팅 (밤에는 불가)
       if (room.phase === 'night') {
@@ -121,8 +115,6 @@ export class GameManager {
 
       room.addChatMessage(chatMessage, false);
       this.io.to(roomId).emit('chatMessage', chatMessage);
-
-      console.log(`💬 Chat in ${roomId}: #${player.anonymousNumber}: ${message}`);
     }
   }
 
@@ -159,8 +151,6 @@ export class GameManager {
       room: room.getState(),
       playerRoles: playerRoles
     });
-
-    console.log(`🎮 Game started in room: ${roomId}, players:`, room.players.size);
   }
 
   handleDayVote(socket, roomId, targetId) {
@@ -233,12 +223,10 @@ export class GameManager {
     if (room.players.size === 0) {
       room.cleanup();
       this.rooms.delete(roomId);
-      console.log(`🗑️ Room ${roomId} deleted (empty)`);
     } else {
       if (wasHost) {
         const newHost = Array.from(room.players.values())[0];
         newHost.isHost = true;
-        console.log(`👑 New host in ${roomId}: ${newHost.name}`);
       }
 
       this.io.to(roomId).emit('playerLeft', {
@@ -246,8 +234,6 @@ export class GameManager {
         room: room.getState()
       });
     }
-
-    console.log(`👋 Player left room: ${roomId}`);
   }
 
   getRooms() {
