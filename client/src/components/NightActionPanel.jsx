@@ -26,6 +26,10 @@ export default function NightActionPanel({ socket, roomId, players, myRole, curr
 
   const alivePlayers = players.filter(p => !p.isDead && p.id !== currentPlayerId);
 
+  const getPlayerDisplay = (player) => {
+    return player.name || `#${player.anonymousNumber}`;
+  };
+
   const getActionText = () => {
     switch (myRole.role) {
       case 'mafia':
@@ -56,7 +60,8 @@ export default function NightActionPanel({ socket, roomId, players, myRole, curr
   };
 
   const actionText = getActionText();
-  const selectedPlayerName = players.find(p => p.id === selectedTarget)?.name;
+  const selectedPlayer = players.find(p => p.id === selectedTarget);
+  const selectedPlayerDisplay = selectedPlayer ? getPlayerDisplay(selectedPlayer) : '';
 
   if (!myRole.info.nightAction) {
     return (
@@ -105,7 +110,7 @@ export default function NightActionPanel({ socket, roomId, players, myRole, curr
                   {myRole.role === 'mafia' && player.role === 'mafia' ? '🔪' : '👤'}
                 </div>
                 <div className="font-semibold text-mafia-light">
-                  {player.name}
+                  {getPlayerDisplay(player)}
                 </div>
               </div>
             </button>
@@ -120,7 +125,7 @@ export default function NightActionPanel({ socket, roomId, players, myRole, curr
           {hasActed
             ? '행동 완료되었습니다'
             : selectedTarget
-            ? `${selectedPlayerName}${
+            ? `${selectedPlayerDisplay}${
                 myRole.role === 'mafia' ? '를 살해' :
                 myRole.role === 'doctor' ? '를 보호' :
                 '를 조사'
@@ -144,7 +149,7 @@ export default function NightActionPanel({ socket, roomId, players, myRole, curr
               myRole.role === 'mafia' ? 'text-red-400' :
               myRole.role === 'doctor' ? 'text-green-400' :
               'text-blue-400'
-            }>{selectedPlayerName}</strong>님을
+            }>{selectedPlayerDisplay}</strong>를
             {myRole.role === 'mafia' ? ' 살해' :
              myRole.role === 'doctor' ? ' 보호' :
              ' 조사'}하시겠습니까?
@@ -183,7 +188,7 @@ export default function NightActionPanel({ socket, roomId, players, myRole, curr
               myRole.role === 'mafia' ? 'text-red-400' :
               myRole.role === 'doctor' ? 'text-green-400' :
               'text-blue-400'
-            }>{selectedPlayerName}</strong>님
+            }>{selectedPlayerDisplay}</strong>
             {myRole.role === 'mafia' ? ' 살해' :
              myRole.role === 'doctor' ? ' 보호' :
              ' 조사'} 완료!

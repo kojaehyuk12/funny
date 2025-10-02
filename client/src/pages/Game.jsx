@@ -15,6 +15,8 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
   const [timeLeft, setTimeLeft] = useState(0);
   const [gameOver, setGameOver] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [showAnonymousNumbers, setShowAnonymousNumbers] = useState(false);
+  const [anonymousPlayers, setAnonymousPlayers] = useState([]);
 
   // roomData에서 내 역할 정보 추출
   useEffect(() => {
@@ -29,6 +31,19 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
 
   useEffect(() => {
     if (!socket) return;
+
+    // 익명 번호 공개
+    socket.on('anonymousNumbersRevealed', ({ players, duration }) => {
+      console.log('🎭 Anonymous numbers revealed:', players);
+      setAnonymousPlayers(players);
+      setShowAnonymousNumbers(true);
+      setTimeLeft(duration);
+
+      // duration 후 익명번호 화면 숨김
+      setTimeout(() => {
+        setShowAnonymousNumbers(false);
+      }, duration * 1000);
+    });
 
     // 역할 배정 (백업용 - 혹시 개별 전송되면 받기)
     socket.on('roleAssigned', ({ role, roleInfo }) => {
@@ -55,11 +70,21 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
       const messages = [];
       if (results?.killed && results.killed.length > 0) {
         results.killed.forEach(victim => {
-          messages.push(`💀 ${victim.name}님이 마피아에게 살해당했습니다!`);
+          const victimDisplay = victim.name || `#${victim.anonymousNumber || victim.id}`;
+          messages.push(`💀 ${victimDisplay}님이 마피아에게 살해당했습니다!`);
         });
       }
       if (results?.saved && results.saved.length > 0) {
         messages.push('💉 의사가 누군가를 살렸습니다!');
+      }
+
+      // 경찰 조사 결과 (경찰에게만 표시)
+      if (results?.investigated && results.investigated.length > 0) {
+        results.investigated.forEach(inv => {
+          if (inv.investigatorId === socket?.id) {
+            messages.push(`👮 조사 결과: #${inv.targetNumber}번은 ${inv.result}`);
+          }
+        });
       }
 
       if (messages.length > 0) {
@@ -72,19 +97,32 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
     });
 
     // 처형 결과
-    socket.on('playerExecuted', ({ player, room }) => {
+    socket.on('playerExecuted', (data) => {
+      const { player, room } = data;
       setRoomData(room);
-      if (player) {
+
+      if (data.executed && player) {
+        // 과반수 달성 - 처형됨
+        const playerDisplay = player.name || `#${player.anonymousNumber}`;
         setNotification({
           title: '⚖️ 처형 결과',
-          message: `${player.name}님이 투표로 처형되었습니다!\n\n직업: ${player.role}`,
+          message: `${playerDisplay}님이 투표로 처형되었습니다!\n\n득표: ${data.votes}표 (필요: ${data.required}표)\n직업: ${player.role}`,
           icon: '⚖️'
         });
-      } else {
+      } else if (!data.executed && data.suspect) {
+        // 과반수 미달 - 처형 없음
+        const suspectDisplay = data.suspect.name || `#${data.suspect.anonymousNumber}`;
         setNotification({
           title: '⚖️ 처형 결과',
-          message: '동점으로 아무도 처형되지 않았습니다.',
-          icon: '⚖️'
+          message: `과반수 미달로 처형되지 않았습니다.\n\n최다 득표: ${suspectDisplay} (${data.votes}표)\n필요 득표: ${data.required}표`,
+          icon: 'ℹ️'
+        });
+      } else {
+        // 아무도 투표 안함
+        setNotification({
+          title: '⚖️ 처형 결과',
+          message: '투표가 없어 아무도 처형되지 않았습니다.',
+          icon: 'ℹ️'
         });
       }
     });
@@ -113,6 +151,7 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
     });
 
     return () => {
+      socket.off('anonymousNumbersRevealed');
       socket.off('roleAssigned');
       socket.off('phaseChanged');
       socket.off('nightResults');
@@ -156,6 +195,60 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
           <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-mafia-accent mx-auto mb-4"></div>
           <p className="text-mafia-light text-xl">역할 배정 중...</p>
           <p className="text-mafia-light text-sm mt-2 opacity-75">잠시만 기다려주세요</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 익명 번호 공개 화면
+  if (showAnonymousNumbers) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-mafia-bg via-mafia-dark to-mafia-bg">
+        <div className="card backdrop-blur-sm max-w-4xl w-full">
+          <h1 className="text-4xl font-bold text-mafia-gold mb-2 text-center animate-pulse">
+            🎭 플레이어 번호 공개
+          </h1>
+          <p className="text-mafia-light text-center mb-8 text-lg">
+            게임 중에는 번호로만 식별됩니다
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-8">
+            {anonymousPlayers.map(player => {
+              const playerData = roomData.players.find(p => p.id === player.id);
+              const isMe = player.id === socket?.id;
+
+              return (
+                <div
+                  key={player.id}
+                  className={`p-6 rounded-xl border-2 transition-all duration-300 ${
+                    isMe
+                      ? 'bg-gradient-to-br from-mafia-accent to-red-700 border-mafia-gold shadow-glow-primary scale-105'
+                      : 'bg-mafia-primary border-mafia-secondary/30 hover:border-mafia-accent/50'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className={`text-5xl font-bold mb-2 ${isMe ? 'text-white' : 'text-mafia-accent'}`}>
+                      {player.anonymousNumber}
+                    </div>
+                    {isMe && (
+                      <div className="text-mafia-gold text-sm font-semibold">
+                        나
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="text-center">
+            <div className="text-5xl font-bold text-mafia-gold mb-2 animate-pulse">
+              {timeLeft}
+            </div>
+            <p className="text-mafia-light text-xl">
+              초 후 첫날 아침이 시작됩니다
+            </p>
+          </div>
         </div>
       </div>
     );

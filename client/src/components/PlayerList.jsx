@@ -10,6 +10,11 @@ export default function PlayerList({ players, myRole, phase }) {
     return '';
   };
 
+  const getPlayerDisplay = (player) => {
+    // 게임 중에는 익명번호, 이름이 없으면 익명번호 표시
+    return player.name || `#${player.anonymousNumber}`;
+  };
+
   return (
     <div className="card">
       <h2 className="text-xl font-bold text-mafia-light mb-4">
@@ -28,7 +33,7 @@ export default function PlayerList({ players, myRole, phase }) {
                 {showRole(player) || '👤'}
               </div>
               <div className="font-semibold text-mafia-light">
-                {player.name}
+                {getPlayerDisplay(player)}
               </div>
             </div>
           </div>
@@ -48,7 +53,7 @@ export default function PlayerList({ players, myRole, phase }) {
                 <div className="text-center">
                   <div className="text-3xl mb-2">💀</div>
                   <div className="font-semibold text-gray-400">
-                    {player.name}
+                    {getPlayerDisplay(player)}
                   </div>
                 </div>
               </div>

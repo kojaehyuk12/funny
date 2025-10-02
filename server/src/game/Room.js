@@ -94,7 +94,31 @@ export class Room {
     this.status = 'playing';
     this.day = 1;
     this.assignRoles();
-    this.startDayPhase(); // 첫날 아침부터 시작
+    this.assignAnonymousNumbers();
+
+    // 익명 번호 공개 페이즈 (5초)
+    this.io.to(this.id).emit('anonymousNumbersRevealed', {
+      players: Array.from(this.players.values()).map(p => ({
+        id: p.id,
+        anonymousNumber: p.anonymousNumber
+      })),
+      duration: 5
+    });
+
+    // 5초 후 첫날 아침 시작
+    setTimeout(() => {
+      this.startDayPhase();
+    }, 5000);
+  }
+
+  assignAnonymousNumbers() {
+    const playerIds = Array.from(this.players.keys());
+    const shuffledNumbers = this.shuffleArray([...Array(playerIds.length).keys()].map(i => i + 1));
+
+    playerIds.forEach((playerId, index) => {
+      const player = this.players.get(playerId);
+      player.anonymousNumber = shuffledNumbers[index];
+    });
   }
 
   assignRoles() {
@@ -261,10 +285,13 @@ export class Room {
       } else if (action.role === 'police' && action.action === 'investigate') {
         const target = this.players.get(action.targetId);
         if (target) {
+          const isMafia = target.role === 'mafia';
           policeInvestigations.push({
             investigatorId: playerId,
             targetId: action.targetId,
-            isMafia: target.role === 'mafia'
+            targetNumber: target.anonymousNumber,
+            isMafia: isMafia,
+            result: isMafia ? '마피아입니다' : '시민입니다'
           });
         }
       }
@@ -316,31 +343,50 @@ export class Room {
 
   executeByVote() {
     const voteCounts = new Map();
+    let aliveCount = 0;
+
+    this.players.forEach(p => {
+      if (!p.isDead) aliveCount++;
+    });
 
     this.dayVotes.forEach(targetId => {
       voteCounts.set(targetId, (voteCounts.get(targetId) || 0) + 1);
     });
 
     let maxVotes = 0;
-    let executedId = null;
+    let suspectId = null;
 
     voteCounts.forEach((votes, playerId) => {
       if (votes > maxVotes) {
         maxVotes = votes;
-        executedId = playerId;
+        suspectId = playerId;
       }
     });
 
-    if (executedId) {
-      const player = this.players.get(executedId);
-      if (player) {
-        player.isDead = true;
-        return player;
-      }
-    }
+    // 과반수 확인
+    const suspect = suspectId ? this.players.get(suspectId) : null;
+    const majorityNeeded = Math.floor(aliveCount / 2) + 1;
 
-    this.dayVotes.clear();
-    return null;
+    if (suspect && maxVotes >= majorityNeeded) {
+      // 과반수 달성 - 처형 확정
+      suspect.isDead = true;
+      this.dayVotes.clear();
+      return {
+        executed: true,
+        player: suspect,
+        votes: maxVotes,
+        required: majorityNeeded
+      };
+    } else {
+      // 과반수 미달 - 처형 없음
+      this.dayVotes.clear();
+      return {
+        executed: false,
+        suspect: suspect ? { id: suspect.id, name: suspect.name, anonymousNumber: suspect.anonymousNumber } : null,
+        votes: maxVotes,
+        required: majorityNeeded
+      };
+    }
   }
 
   getVoteResults() {
@@ -421,7 +467,8 @@ export class Room {
       return {
         isGameOver: true,
         winner: 'mafia',
-        reason: '마피아가 시민을 모두 제거했습니다.'
+        reason: '마피아가 시민을 모두 제거했습니다.',
+        finalPlayers: this.getState(true).players // 실명과 역할 공개
       };
     }
 
@@ -431,7 +478,8 @@ export class Room {
       return {
         isGameOver: true,
         winner: 'citizen',
-        reason: '모든 마피아가 제거되었습니다.'
+        reason: '모든 마피아가 제거되었습니다.',
+        finalPlayers: this.getState(true).players // 실명과 역할 공개
       };
     }
 
@@ -442,7 +490,7 @@ export class Room {
     return GameRoles[role] || null;
   }
 
-  getState() {
+  getState(includeRoles = false) {
     return {
       id: this.id,
       status: this.status,
@@ -451,11 +499,12 @@ export class Room {
       settings: this.settings,
       players: Array.from(this.players.values()).map(p => ({
         id: p.id,
-        name: p.name,
+        name: this.status === 'playing' && !includeRoles ? undefined : p.name, // 게임 중에는 이름 숨김
+        anonymousNumber: p.anonymousNumber,
         isHost: p.isHost,
         isReady: p.isReady,
         isDead: p.isDead,
-        // 역할은 게임 시작 후에만 개별적으로 전송
+        role: includeRoles ? p.role : undefined // 게임 종료 시에만 역할 공개
       })),
       chatMessages: this.chatMessages
     };

@@ -24,7 +24,12 @@ export default function VotePanel({ socket, roomId, players, currentPlayerId }) 
   };
 
   const alivePlayers = players.filter(p => !p.isDead && p.id !== currentPlayerId);
-  const selectedPlayerName = players.find(p => p.id === selectedTarget)?.name;
+  const selectedPlayer = players.find(p => p.id === selectedTarget);
+  const selectedPlayerDisplay = selectedPlayer?.name || `#${selectedPlayer?.anonymousNumber}`;
+
+  const getPlayerDisplay = (player) => {
+    return player.name || `#${player.anonymousNumber}`;
+  };
 
   return (
     <>
@@ -34,7 +39,7 @@ export default function VotePanel({ socket, roomId, players, currentPlayerId }) 
         </h2>
 
         <p className="text-mafia-light mb-4">
-          용의자를 선택하고 투표하세요. 가장 많은 표를 받은 사람이 처형됩니다.
+          용의자를 선택하고 투표하세요. 과반수의 표를 받은 사람이 처형됩니다.
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">
@@ -54,7 +59,7 @@ export default function VotePanel({ socket, roomId, players, currentPlayerId }) 
               <div className="text-center">
                 <div className="text-3xl mb-2">👤</div>
                 <div className="font-semibold text-mafia-light">
-                  {player.name}
+                  {getPlayerDisplay(player)}
                 </div>
               </div>
             </button>
@@ -69,7 +74,7 @@ export default function VotePanel({ socket, roomId, players, currentPlayerId }) 
           {hasVoted
             ? '투표 완료되었습니다'
             : selectedTarget
-            ? `${selectedPlayerName}에게 투표하기`
+            ? `${selectedPlayerDisplay}에게 투표하기`
             : '처형할 대상을 선택하세요'}
         </button>
       </div>
@@ -82,7 +87,7 @@ export default function VotePanel({ socket, roomId, players, currentPlayerId }) 
       >
         <div className="text-center">
           <p className="text-mafia-light mb-6 text-lg">
-            <strong className="text-red-400">{selectedPlayerName}</strong>님을<br />
+            <strong className="text-red-400">{selectedPlayerDisplay}</strong>를<br />
             처형 대상으로 투표하시겠습니까?
           </p>
           <div className="flex gap-3">
@@ -111,7 +116,7 @@ export default function VotePanel({ socket, roomId, players, currentPlayerId }) 
         <div className="text-center">
           <div className="text-5xl mb-4">✓</div>
           <p className="text-mafia-light text-lg">
-            <strong className="text-red-400">{selectedPlayerName}</strong>님에게<br />
+            <strong className="text-red-400">{selectedPlayerDisplay}</strong>에게<br />
             투표가 완료되었습니다!
           </p>
           <button
