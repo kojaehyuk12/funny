@@ -18,6 +18,7 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
 
     // 역할 배정
     socket.on('roleAssigned', ({ role, roleInfo }) => {
+      console.log('✅ Role assigned:', role, roleInfo);
       setMyRole({ role, info: roleInfo });
     });
 

@@ -96,16 +96,20 @@ export class GameManager {
     }
 
     room.startGame();
-    this.io.to(roomId).emit('gameStarted', {
-      room: room.getState()
-    });
 
-    // 각 플레이어에게 개별적으로 역할 정보 전송
+    // 각 플레이어에게 개별적으로 역할 정보 전송 (게임 시작 전에 먼저)
     room.players.forEach((player, playerId) => {
+      const roleInfo = room.getRoleInfo(player.role);
+      console.log(`📨 Sending role to ${player.name}: ${player.role}`);
       this.io.to(playerId).emit('roleAssigned', {
         role: player.role,
-        roleInfo: room.getRoleInfo(player.role)
+        roleInfo: roleInfo
       });
+    });
+
+    // 게임 시작 알림
+    this.io.to(roomId).emit('gameStarted', {
+      room: room.getState()
     });
 
     console.log(`🎮 Game started in room: ${roomId}`);

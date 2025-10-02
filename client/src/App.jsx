@@ -30,6 +30,7 @@ function App() {
 
     // 게임 시작
     socket.on('gameStarted', ({ room }) => {
+      console.log('🎮 Game started, room data:', room);
       setRoomData(room);
       setCurrentPage('game');
     });
