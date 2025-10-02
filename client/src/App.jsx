@@ -3,14 +3,16 @@ import { useSocket } from './hooks/useSocket';
 import Home from './pages/Home';
 import Lobby from './pages/Lobby';
 import Game from './pages/Game';
+import LiarGame from './pages/LiarGame';
 
 function App() {
   const { socket, isConnected } = useSocket();
-  const [currentPage, setCurrentPage] = useState('home'); // home, lobby, game
+  const [currentPage, setCurrentPage] = useState('home'); // home, lobby, game, liar
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState(null);
   const [roomData, setRoomData] = useState(null);
   const [autoJoinRoom, setAutoJoinRoom] = useState(null);
+  const [gameType, setGameType] = useState('mafia'); // mafia or liar
 
   // URL 파라미터에서 방 코드 확인
   useEffect(() => {
@@ -65,6 +67,7 @@ function App() {
 
   const createRoom = (name, settings) => {
     setPlayerName(name);
+    setGameType('mafia');
     socket.emit('createRoom', {
       playerName: name,
       roomSettings: settings
@@ -73,8 +76,17 @@ function App() {
 
   const joinRoom = (name, roomId) => {
     setPlayerName(name);
+    setGameType('mafia');
     socket.emit('joinRoom', {
       roomId,
+      playerName: name
+    });
+  };
+
+  const createLiarRoom = (name) => {
+    setPlayerName(name);
+    setGameType('liar');
+    socket.emit('createLiarRoom', {
       playerName: name
     });
   };
@@ -83,6 +95,7 @@ function App() {
     setCurrentPage('home');
     setRoomId(null);
     setRoomData(null);
+    setGameType('mafia');
   };
 
   if (!isConnected) {
@@ -102,10 +115,21 @@ function App() {
         <Home
           onCreateRoom={createRoom}
           onJoinRoom={joinRoom}
+          onCreateLiarRoom={createLiarRoom}
           autoJoinRoom={autoJoinRoom}
         />
       )}
-      {currentPage === 'lobby' && (
+      {currentPage === 'lobby' && gameType === 'liar' && (
+        <LiarGame
+          socket={socket}
+          roomId={roomId}
+          roomData={roomData}
+          setRoomData={setRoomData}
+          playerName={playerName}
+          onLeave={leaveRoom}
+        />
+      )}
+      {currentPage === 'lobby' && gameType === 'mafia' && (
         <Lobby
           socket={socket}
           roomId={roomId}

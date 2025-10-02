@@ -114,6 +114,11 @@ io.on('connection', (socket) => {
     gameManager.playerReady(socket, roomId);
   });
 
+  // 설정 변경
+  socket.on('updateSettings', ({ roomId, newSettings }) => {
+    gameManager.updateSettings(socket, roomId, newSettings);
+  });
+
   // 연결 해제
   socket.on('disconnect', () => {
     console.log(`❌ User disconnected: ${socket.id}`);

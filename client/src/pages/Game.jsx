@@ -6,6 +6,7 @@ import PhaseTimer from '../components/PhaseTimer';
 import VotePanel from '../components/VotePanel';
 import NightActionPanel from '../components/NightActionPanel';
 import Modal from '../components/Modal';
+import BackgroundMusic from '../components/BackgroundMusic';
 
 export default function Game({ socket, roomId, roomData, setRoomData, playerName, onLeave }) {
   const [myRole, setMyRole] = useState(null);
@@ -329,6 +330,12 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
         </div>
       </Modal>
     )}
+
+    {/* 배경 음악 - phase에 따라 변경 */}
+    <BackgroundMusic
+      track={phase === 'night' ? '/night.mp3' : '/moring.mp3'}
+      volume={0.2}
+    />
     </>
   );
 }

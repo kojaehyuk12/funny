@@ -2,6 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    @apply bg-mafia-bg text-mafia-light font-sans;
+    background-image: radial-gradient(circle at 20% 80%, rgba(220, 38, 38, 0.05) 0%, transparent 50%),
+                      radial-gradient(circle at 80% 20%, rgba(220, 38, 38, 0.05) 0%, transparent 50%);
+  }
+
+  /* 스크롤바 스타일 */
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-mafia-dark;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-mafia-accent rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-red-700;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-mafia-surface p-6 rounded-2xl shadow-2xl border border-mafia-secondary/30;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(220, 38, 38, 0.1);
+  }
+
+  .btn-primary {
+    @apply bg-gradient-to-r from-mafia-accent to-red-700 text-white font-bold py-2.5 px-6 rounded-lg transition-all duration-200;
+    @apply hover:from-red-700 hover:to-red-800 hover:shadow-glow-primary transform hover:scale-105 active:scale-95;
+    @apply disabled:from-gray-600 disabled:to-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none;
+  }
+
+  .btn-secondary {
+    @apply bg-mafia-secondary text-mafia-light font-semibold py-2.5 px-6 rounded-lg transition-all duration-200;
+    @apply hover:bg-mafia-primary hover:shadow-lg border border-mafia-secondary/50;
+    @apply disabled:bg-mafia-dark disabled:text-mafia-muted disabled:cursor-not-allowed disabled:border-mafia-dark;
+  }
+
+  .input-field {
+    @apply w-full p-3 rounded-lg bg-mafia-primary border-2 border-mafia-secondary/30 text-mafia-light;
+    @apply focus:outline-none focus:border-mafia-accent focus:ring-2 focus:ring-mafia-accent/30;
+    @apply placeholder:text-mafia-muted;
+  }
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -14,44 +61,9 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #1a1a2e;
-  color: #f1f1f1;
 }
 
 #root {
   min-height: 100vh;
   width: 100%;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #16213e;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #0f3460;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #e94560;
-}
-
-/* Custom button styles */
-@layer components {
-  .btn-primary {
-    @apply bg-mafia-accent hover:bg-red-600 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
-  }
-
-  .btn-secondary {
-    @apply bg-mafia-secondary hover:bg-mafia-primary text-white font-semibold py-2 px-6 rounded-lg transition-all duration-200;
-  }
-
-  .card {
-    @apply bg-mafia-primary rounded-xl shadow-lg p-6 border border-mafia-secondary;
-  }
 }

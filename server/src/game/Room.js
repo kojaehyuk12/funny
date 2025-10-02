@@ -58,6 +58,29 @@ export class Room {
     }
   }
 
+  updateSettings(newSettings) {
+    // 역할별 인원수 합산
+    const numMafia = parseInt(newSettings.roles.mafia, 10) || 0;
+    const numDoctor = parseInt(newSettings.roles.doctor, 10) || 0;
+    const numPolice = parseInt(newSettings.roles.police, 10) || 0;
+    const totalRoles = numMafia + numDoctor + numPolice;
+
+    // 최소 플레이어 수보다 역할 수가 많으면 안 됨
+    if (totalRoles >= newSettings.minPlayers) {
+      return { success: false, message: '역할의 총합은 최소 플레이어 수보다 적어야 합니다.' };
+    }
+
+    this.settings = {
+      ...this.settings,
+      ...newSettings,
+      roles: {
+        ...this.settings.roles,
+        ...newSettings.roles
+      }
+    };
+    return { success: true };
+  }
+
   addChatMessage(message) {
     this.chatMessages.push(message);
 

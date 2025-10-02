@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-export default function ChatBox({ socket, roomId, playerName, messages, isAlive = true, phase, myRole }) {
+export default function ChatBox({ socket, roomId, playerName, messages, isAlive = true, phase, myRole, isLobby = false }) {
   const [message, setMessage] = useState('');
   const messagesEndRef = useRef(null);
 
@@ -14,7 +14,8 @@ export default function ChatBox({ socket, roomId, playerName, messages, isAlive 
 
   const sendMessage = (e) => {
     e.preventDefault();
-    if (!message.trim() || !isAlive) return;
+    if (!message.trim()) return;
+    if (!isLobby && !isAlive) return;
 
     socket.emit('chatMessage', {
       roomId,
@@ -24,10 +25,12 @@ export default function ChatBox({ socket, roomId, playerName, messages, isAlive 
     setMessage('');
   };
 
-  // 마피아는 밤에 채팅 가능, 다른 직업은 낮에만 채팅 가능
-  const canChat = isAlive && (
-    phase === 'day' ||
-    (phase === 'night' && myRole?.role === 'mafia')
+  // 로비에서는 항상 채팅 가능, 게임 중에는 규칙에 따라 채팅 가능
+  const canChat = isLobby || (
+    isAlive && (
+      phase === 'day' ||
+      (phase === 'night' && myRole?.role === 'mafia')
+    )
   );
 
   return (
@@ -67,10 +70,10 @@ export default function ChatBox({ socket, roomId, playerName, messages, isAlive 
                     ? 'bg-mafia-dark/50 text-center text-xs italic text-mafia-light/70 px-6'
                     : isMafiaChat
                     ? isMyMessage
-                      ? 'bg-gradient-to-r from-red-600 to-red-700 text-white rounded-br-sm'
+                      ? 'bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-br-sm'
                       : 'bg-gradient-to-r from-red-800 to-red-900 text-white rounded-bl-sm'
                     : isMyMessage
-                    ? 'bg-gradient-to-r from-mafia-accent to-red-600 text-white rounded-br-sm'
+                    ? 'bg-gradient-to-r from-gray-100 to-white text-gray-900 rounded-br-sm shadow-md border border-gray-200'
                     : 'bg-mafia-secondary/80 text-mafia-light rounded-bl-sm backdrop-blur-sm'
                 }`}
               >
@@ -107,7 +110,9 @@ export default function ChatBox({ socket, roomId, playerName, messages, isAlive 
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder={
-            !isAlive
+            isLobby
+              ? '메시지를 입력하세요...'
+              : !isAlive
               ? '💀 사망하여 채팅할 수 없습니다'
               : phase === 'night' && myRole?.role !== 'mafia'
               ? '🌙 밤에는 마피아만 채팅할 수 있습니다'

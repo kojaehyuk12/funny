@@ -245,6 +245,26 @@ export class GameManager {
     });
   }
 
+  updateSettings(socket, roomId, newSettings) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+
+    const player = room.players.get(socket.id);
+    if (!player || !player.isHost) {
+      socket.emit('error', { message: '방장만 설정을 변경할 수 있습니다.' });
+      return;
+    }
+
+    const result = room.updateSettings(newSettings);
+
+    if (result.success) {
+      this.io.to(roomId).emit('roomUpdated', room.getState());
+      socket.emit('settingsUpdated', { success: true });
+    } else {
+      socket.emit('error', { message: result.message });
+    }
+  }
+
   checkGameEnd(room) {
     const result = room.checkWinCondition();
 
