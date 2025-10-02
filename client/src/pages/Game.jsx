@@ -29,16 +29,20 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
     });
 
     // 밤 결과
-    socket.on('nightResults', ({ results, room }) => {
-      setRoomData(room);
+    socket.on('nightResults', (data) => {
+      // 데이터 구조 확인
+      const results = data?.results || data;
+      const room = data?.room;
+
+      if (room) setRoomData(room);
 
       // 결과 알림
-      if (results.killed.length > 0) {
+      if (results?.killed && results.killed.length > 0) {
         results.killed.forEach(victim => {
           alert(`💀 ${victim.name}님이 마피아에게 살해당했습니다!`);
         });
       }
-      if (results.saved.length > 0) {
+      if (results?.saved && results.saved.length > 0) {
         alert('💉 의사가 누군가를 살렸습니다!');
       }
     });
