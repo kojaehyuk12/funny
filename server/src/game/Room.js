@@ -164,7 +164,10 @@ export class Room {
     this.phaseTimer = setTimeout(() => {
       if (this.phase === 'night') {
         const results = this.resolveNightActions();
-        this.io.to(this.id).emit('nightResults', results);
+        this.io.to(this.id).emit('nightResults', {
+          results: results,
+          room: this.getState()
+        });
 
         const gameResult = this.checkWinCondition();
         if (!gameResult.isGameOver) {
@@ -172,11 +175,10 @@ export class Room {
         }
       } else if (this.phase === 'day') {
         const executedPlayer = this.executeByVote();
-        if (executedPlayer) {
-          this.io.to(this.id).emit('playerExecuted', {
-            player: executedPlayer
-          });
-        }
+        this.io.to(this.id).emit('playerExecuted', {
+          player: executedPlayer,
+          room: this.getState()
+        });
 
         const gameResult = this.checkWinCondition();
         if (!gameResult.isGameOver) {
@@ -358,13 +360,17 @@ export class Room {
 
     if (this.phase === 'night') {
       const results = this.resolveNightActions();
-      this.io.to(this.id).emit('nightResults', results);
+      this.io.to(this.id).emit('nightResults', {
+        results: results,
+        room: this.getState()
+      });
       this.startDayPhase();
     } else {
       const executed = this.executeByVote();
-      if (executed) {
-        this.io.to(this.id).emit('playerExecuted', { player: executed });
-      }
+      this.io.to(this.id).emit('playerExecuted', {
+        player: executed,
+        room: this.getState()
+      });
       this.day++;
       this.startNightPhase();
     }
