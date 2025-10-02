@@ -135,7 +135,7 @@ export default function Lobby({ socket, roomId, roomData, setRoomData, playerNam
         </main>
 
         {isSettingsModalOpen && <SettingsModal settings={roomData.settings} onClose={() => setSettingsModalOpen(false)} onSave={handleSaveSettings} />}
-        <BackgroundMusic track="/lobby.mp3" volume={0.2} />
+        <BackgroundMusic track={`${import.meta.env.BASE_URL}lobby.mp3`} volume={0.2} />
       </div>
     </div>
   );

@@ -333,7 +333,7 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
 
     {/* 배경 음악 - phase에 따라 변경 */}
     <BackgroundMusic
-      track={phase === 'night' ? '/night.mp3' : '/moring.mp3'}
+      track={phase === 'night' ? `${import.meta.env.BASE_URL}night.mp3` : `${import.meta.env.BASE_URL}moring.mp3`}
       volume={0.2}
     />
     </>

@@ -152,7 +152,7 @@ export default function LiarGame({ socket, roomId, roomData, setRoomData, player
             🏠 대기실로 돌아가기
           </button>
         </div>
-        <BackgroundMusic track="/liarbgm.mp3" volume={0.2} />
+        <BackgroundMusic track={`${import.meta.env.BASE_URL}liarbgm.mp3`} volume={0.2} />
       </div>
     );
   }
@@ -214,7 +214,7 @@ export default function LiarGame({ socket, roomId, roomData, setRoomData, player
             </button>
           )}
         </div>
-        <BackgroundMusic track="/liarbgm.mp3" volume={0.2} />
+        <BackgroundMusic track={`${import.meta.env.BASE_URL}liarbgm.mp3`} volume={0.2} />
       </div>
     );
   }
@@ -362,7 +362,7 @@ export default function LiarGame({ socket, roomId, roomData, setRoomData, player
           </div>
         </div>
       </div>
-      <BackgroundMusic track="/lairgame.mp3" volume={0.2} />
+      <BackgroundMusic track={`${import.meta.env.BASE_URL}lairgame.mp3`} volume={0.2} />
     </div>
   );
 }
