@@ -6,7 +6,10 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\n🎭 Initial commit: Mafia game with real-time chat\n\nFeatures implemented:\n- Real-time multiplayer mafia game\n- Socket.io for real-time communication\n- Room system with host controls\n- Chat functionality\n- Day/Night phase system\n- Voting and night action mechanics\n- Role system (Mafia, Citizen, Doctor, Police)\n- Time skip voting\n- Responsive UI with Tailwind CSS\n\nTech stack:\n- Frontend: React 19 + Vite 7 + Tailwind CSS\n- Backend: Node.js + Express + Socket.io\n- Deployment: GitHub Pages (frontend) + Render/Railway (backend)\n\n🤖 Generated with Claude Code\nhttps://claude.com/claude-code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git push:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(del Game.jsx)",
+      "Bash(ren:*)",
+      "Bash(git pull:*)"
     ],
     "deny": [],
     "ask": []

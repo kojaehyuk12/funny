@@ -1,17 +1,18 @@
 import { Room } from './Room.js';
+import { GameRoles } from './GameRoles.js';
 
 export class GameManager {
   constructor(io) {
     this.io = io;
-    this.rooms = new Map(); // roomId -> Room
-    this.playerRoomMap = new Map(); // socketId -> roomId
+    this.rooms = new Map();
+    this.playerRoomMap = new Map();
   }
 
   createRoom(socket, playerName, roomSettings) {
     const room = new Room(this.io, roomSettings);
     this.rooms.set(room.id, room);
 
-    room.addPlayer(socket.id, playerName, true); // true = host
+    room.addPlayer(socket.id, playerName, true);
     this.playerRoomMap.set(socket.id, room.id);
 
     socket.join(room.id);
@@ -58,60 +59,70 @@ export class GameManager {
     console.log(`👤 ${playerName} joined room: ${roomId}`);
   }
 
-  handleChatMessage(socket, roomId, message) {
+  // 듀얼 채팅 시스템
+  handleChatMessage(socket, roomId, message, isMafiaChat = false) {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
     const player = room.players.get(socket.id);
     if (!player) return;
 
-    // 사망자는 채팅 불가
     if (player.isDead) {
       socket.emit('error', { message: '사망한 플레이어는 채팅할 수 없습니다.' });
       return;
     }
 
-    // 밤 페이즈 체크
-    if (room.phase === 'night') {
-      // 마피아가 아니면 밤에 채팅 불가
+    if (isMafiaChat) {
+      // 마피아 채팅
       if (player.role !== 'mafia') {
-        socket.emit('error', { message: '밤에는 마피아만 채팅할 수 있습니다.' });
+        socket.emit('error', { message: '마피아만 마피아 채팅을 사용할 수 있습니다.' });
         return;
       }
 
-      // 마피아 전용 채팅
+      if (room.phase !== 'night') {
+        socket.emit('error', { message: '마피아 채팅은 밤에만 사용할 수 있습니다.' });
+        return;
+      }
+
       const chatMessage = {
         id: Date.now(),
         playerId: socket.id,
-        playerName: player.name,
+        anonymousNumber: player.anonymousNumber,
         message,
         timestamp: new Date(),
-        type: 'mafia' // 마피아 채팅임을 표시
+        type: 'mafia'
       };
 
-      room.addChatMessage(chatMessage);
+      room.addChatMessage(chatMessage, true);
 
       // 마피아들에게만 전송
       room.players.forEach((p, pId) => {
         if (p.role === 'mafia') {
-          this.io.to(pId).emit('chatMessage', chatMessage);
+          this.io.to(pId).emit('mafiaChat', chatMessage);
         }
       });
 
-      console.log(`🔪 Mafia chat in ${roomId}: ${player.name}: ${message}`);
+      console.log(`🔪 Mafia chat in ${roomId}: #${player.anonymousNumber}: ${message}`);
     } else {
-      // 낮 페이즈는 전체 채팅
+      // 일반 채팅 (밤에는 불가)
+      if (room.phase === 'night') {
+        socket.emit('error', { message: '밤에는 일반 채팅을 사용할 수 없습니다.' });
+        return;
+      }
+
       const chatMessage = {
         id: Date.now(),
         playerId: socket.id,
-        playerName: player.name,
+        anonymousNumber: player.anonymousNumber,
         message,
         timestamp: new Date(),
         type: 'normal'
       };
 
-      room.addChatMessage(chatMessage);
+      room.addChatMessage(chatMessage, false);
       this.io.to(roomId).emit('chatMessage', chatMessage);
+
+      console.log(`💬 Chat in ${roomId}: #${player.anonymousNumber}: ${message}`);
     }
   }
 
@@ -134,113 +145,53 @@ export class GameManager {
 
     room.startGame();
 
-    console.log(`🎮 Game started in room: ${roomId}, players:`, room.players.size);
-
-    // 모든 플레이어의 역할 정보를 맵으로 만들기
+    // 역할 정보 전송
     const playerRoles = {};
     room.players.forEach((player, playerId) => {
-      const roleInfo = room.getRoleInfo(player.role);
-      console.log(`📨 Preparing role for ${player.name} (${playerId}): ${player.role}`, roleInfo ? '✅' : '❌ NULL');
-
+      const roleInfo = GameRoles[player.role];
       playerRoles[playerId] = {
         role: player.role,
         roleInfo: roleInfo
       };
     });
 
-    // 게임 시작 알림과 함께 역할 정보도 전송
     this.io.to(roomId).emit('gameStarted', {
       room: room.getState(),
-      playerRoles: playerRoles  // 각 플레이어의 역할 정보 포함
+      playerRoles: playerRoles
     });
 
-    console.log(`✅ gameStarted event sent to room: ${roomId} with roles:`, Object.keys(playerRoles));
+    console.log(`🎮 Game started in room: ${roomId}, players:`, room.players.size);
   }
 
-  voteSkipTime(socket, roomId) {
+  handleDayVote(socket, roomId, targetId) {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
-    room.voteSkipTime(socket.id);
-    this.io.to(roomId).emit('timeSkipVoted', {
-      votesNeeded: room.getSkipVotesNeeded(),
-      currentVotes: room.skipTimeVotes.size
-    });
-
-    if (room.shouldSkipTime()) {
-      room.skipTime();
-      this.io.to(roomId).emit('timeSkipped', {
-        phase: room.phase
-      });
-    }
+    room.handleDayVote(socket.id, targetId);
   }
 
-  voteDayExecution(socket, roomId, targetId) {
+  handleNightAction(socket, roomId, action) {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
-    if (room.phase !== 'day') {
-      socket.emit('error', { message: '낮 시간에만 투표할 수 있습니다.' });
-      return;
-    }
-
-    room.voteDayExecution(socket.id, targetId);
-
-    this.io.to(roomId).emit('voteUpdated', {
-      votes: room.getVoteResults()
-    });
-
-    // 모든 살아있는 플레이어가 투표했는지 확인
-    if (room.allPlayersVoted()) {
-      const executedPlayer = room.executeByVote();
-
-      this.io.to(roomId).emit('playerExecuted', {
-        player: executedPlayer,
-        room: room.getState()
-      });
-
-      // 게임 종료 체크
-      this.checkGameEnd(room);
-    }
+    room.handleNightAction(socket.id, action);
   }
 
-  handleNightAction(socket, roomId, action, targetId) {
+  handleExecutionVote(socket, roomId, vote) {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
-    if (room.phase !== 'night') {
-      socket.emit('error', { message: '밤 시간에만 행동할 수 있습니다.' });
-      return;
-    }
-
-    const player = room.players.get(socket.id);
-    if (!player || player.isDead) return;
-
-    room.recordNightAction(socket.id, action, targetId);
-    socket.emit('actionRecorded', { success: true });
-
-    // 모든 특수 역할이 행동했는지 확인
-    if (room.allNightActionsComplete()) {
-      const results = room.resolveNightActions();
-
-      this.io.to(roomId).emit('nightResults', {
-        results,
-        room: room.getState()
-      });
-
-      // 게임 종료 체크
-      this.checkGameEnd(room);
-    }
+    room.handleExecutionVote(socket.id, vote);
   }
 
-  playerReady(socket, roomId) {
+  toggleReady(socket, roomId) {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
     room.setPlayerReady(socket.id);
 
-    this.io.to(roomId).emit('playerReadyUpdate', {
-      playerId: socket.id,
+    this.io.to(roomId).emit('playerReady', {
+      player: room.players.get(socket.id),
       room: room.getState()
     });
   }
@@ -256,30 +207,16 @@ export class GameManager {
     }
 
     const result = room.updateSettings(newSettings);
-
     if (result.success) {
-      this.io.to(roomId).emit('roomUpdated', room.getState());
-      socket.emit('settingsUpdated', { success: true });
+      this.io.to(roomId).emit('settingsUpdated', {
+        room: room.getState()
+      });
     } else {
       socket.emit('error', { message: result.message });
     }
   }
 
-  checkGameEnd(room) {
-    const result = room.checkWinCondition();
-
-    if (result.isGameOver) {
-      this.io.to(room.id).emit('gameOver', {
-        winner: result.winner,
-        reason: result.reason,
-        room: room.getState()
-      });
-
-      console.log(`🏁 Game ended in room: ${room.id} - Winner: ${result.winner}`);
-    }
-  }
-
-  handleDisconnect(socket) {
+  leaveRoom(socket) {
     const roomId = this.playerRoomMap.get(socket.id);
     if (!roomId) return;
 
@@ -287,31 +224,30 @@ export class GameManager {
     if (!room) return;
 
     const player = room.players.get(socket.id);
-    if (player) {
+    const wasHost = player?.isHost;
+
+    room.removePlayer(socket.id);
+    this.playerRoomMap.delete(socket.id);
+    socket.leave(roomId);
+
+    if (room.players.size === 0) {
+      room.cleanup();
+      this.rooms.delete(roomId);
+      console.log(`🗑️ Room ${roomId} deleted (empty)`);
+    } else {
+      if (wasHost) {
+        const newHost = Array.from(room.players.values())[0];
+        newHost.isHost = true;
+        console.log(`👑 New host in ${roomId}: ${newHost.name}`);
+      }
+
       this.io.to(roomId).emit('playerLeft', {
         playerId: socket.id,
-        playerName: player.name
+        room: room.getState()
       });
-
-      room.removePlayer(socket.id);
-      this.playerRoomMap.delete(socket.id);
-
-      // 방에 아무도 없으면 삭제
-      if (room.players.size === 0) {
-        this.rooms.delete(roomId);
-        console.log(`🗑️ Room deleted: ${roomId}`);
-      } else {
-        // 호스트가 나갔으면 다른 사람에게 호스트 권한 이전
-        if (player.isHost && room.players.size > 0) {
-          const newHost = Array.from(room.players.values())[0];
-          newHost.isHost = true;
-          this.io.to(roomId).emit('hostChanged', {
-            newHostId: newHost.id,
-            newHostName: newHost.name
-          });
-        }
-      }
     }
+
+    console.log(`👋 Player left room: ${roomId}`);
   }
 
   getRooms() {

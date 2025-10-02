@@ -86,9 +86,14 @@ io.on('connection', (socket) => {
     gameManager.joinRoom(socket, roomId, playerName);
   });
 
-  // 채팅 메시지
+  // 일반 채팅
   socket.on('chatMessage', ({ roomId, message }) => {
-    gameManager.handleChatMessage(socket, roomId, message);
+    gameManager.handleChatMessage(socket, roomId, message, false);
+  });
+
+  // 마피아 채팅
+  socket.on('mafiaChat', ({ roomId, message }) => {
+    gameManager.handleChatMessage(socket, roomId, message, true);
   });
 
   // 게임 시작
@@ -96,24 +101,24 @@ io.on('connection', (socket) => {
     gameManager.startGame(socket, roomId);
   });
 
-  // 시간 단축 투표
-  socket.on('voteSkipTime', ({ roomId }) => {
-    gameManager.voteSkipTime(socket, roomId);
+  // 낮 투표
+  socket.on('dayVote', ({ roomId, targetId }) => {
+    gameManager.handleDayVote(socket, roomId, targetId);
   });
 
-  // 낮 투표 (처형)
-  socket.on('voteDayExecution', ({ roomId, targetId }) => {
-    gameManager.voteDayExecution(socket, roomId, targetId);
+  // 밤 행동
+  socket.on('nightAction', ({ roomId, action }) => {
+    gameManager.handleNightAction(socket, roomId, action);
   });
 
-  // 밤 행동 (마피아 킬, 의사 힐, 경찰 조사)
-  socket.on('nightAction', ({ roomId, action, targetId }) => {
-    gameManager.handleNightAction(socket, roomId, action, targetId);
+  // 처형 투표
+  socket.on('executionVote', ({ roomId, vote }) => {
+    gameManager.handleExecutionVote(socket, roomId, vote);
   });
 
   // 준비 완료
-  socket.on('playerReady', ({ roomId }) => {
-    gameManager.playerReady(socket, roomId);
+  socket.on('toggleReady', ({ roomId }) => {
+    gameManager.toggleReady(socket, roomId);
   });
 
   // 설정 변경
@@ -183,11 +188,15 @@ io.on('connection', (socket) => {
     liarGameManager.handleKeywordGuess(roomId, socket.id, keyword);
   });
 
+  // 방 나가기
+  socket.on('leaveRoom', () => {
+    gameManager.leaveRoom(socket);
+  });
+
   // 연결 해제
   socket.on('disconnect', () => {
     console.log(`❌ User disconnected: ${socket.id}`);
-    gameManager.handleDisconnect(socket);
-    // 라이어 게임도 처리 필요시 추가
+    gameManager.leaveRoom(socket);
   });
 });
 

@@ -1,10 +1,4 @@
-import { useState, useEffect } from 'react';
-import ChatBox from '../components/ChatBox';
-import RoleInfo from '../components/RoleInfo';
-import PlayerList from '../components/PlayerList';
-import PhaseTimer from '../components/PhaseTimer';
-import VotePanel from '../components/VotePanel';
-import NightActionPanel from '../components/NightActionPanel';
+import { useState, useEffect, useRef } from 'react';
 import Modal from '../components/Modal';
 import BackgroundMusic from '../components/BackgroundMusic';
 
@@ -13,72 +7,210 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
   const [phase, setPhase] = useState(null);
   const [day, setDay] = useState(1);
   const [timeLeft, setTimeLeft] = useState(0);
-  const [gameOver, setGameOver] = useState(null);
   const [notification, setNotification] = useState(null);
-  const [showAnonymousNumbers, setShowAnonymousNumbers] = useState(false);
-  const [anonymousPlayers, setAnonymousPlayers] = useState([]);
 
-  // roomData에서 내 역할 정보 추출
+  // 듀얼 채팅
+  const [chatMessages, setChatMessages] = useState([]);
+  const [mafiaMessages, setMafiaMessages] = useState([]);
+  const [message, setMessage] = useState('');
+  const chatRef = useRef(null);
+  const mafiaChatRef = useRef(null);
+
+  // 투표
+  const [voteTarget, setVoteTarget] = useState(null);
+  const [voteStatus, setVoteStatus] = useState([]);
+  const [hasVoted, setHasVoted] = useState(false);
+
+  // 밤 행동
+  const [nightTarget, setNightTarget] = useState(null);
+  const [hasActed, setHasActed] = useState(false);
+
+  // 처형 투표
+  const [suspectId, setSuspectId] = useState(null);
+  const [executionVote, setExecutionVote] = useState(null);
+  const [executionStatus, setExecutionStatus] = useState({ killVotes: 0, liveVotes: 0 });
+
+  const [gameOver, setGameOver] = useState(null);
+
+  // 역할 정보 가져오기
   useEffect(() => {
-    if (roomData?.playerRoles && socket?.id) {
-      const myRoleData = roomData.playerRoles[socket.id];
-      if (myRoleData) {
-        console.log('✅ Role found in roomData:', myRoleData);
-        setMyRole({ role: myRoleData.role, info: myRoleData.roleInfo });
-      }
+    if (!roomData || !roomData.playerRoles || !socket) return;
+
+    const myRoleData = roomData.playerRoles[socket.id];
+    if (myRoleData) {
+      console.log('✅ Role from roomData:', myRoleData);
+      setMyRole({ role: myRoleData.role, info: myRoleData.roleInfo });
     }
   }, [roomData, socket]);
 
+  // Phase 변경 처리
   useEffect(() => {
     if (!socket) return;
 
-    // 익명 번호 공개
-    socket.on('anonymousNumbersRevealed', ({ players, duration }) => {
-      console.log('🎭 Anonymous numbers revealed:', players);
-      setAnonymousPlayers(players);
-      setShowAnonymousNumbers(true);
-      setTimeLeft(duration);
+    socket.on('phaseChanged', (data) => {
+      console.log('📍 Phase changed:', data.phase, data);
+      setPhase(data.phase);
+      setDay(data.day || 1);
+      setTimeLeft(data.duration || 0);
 
-      // duration 후 익명번호 화면 숨김
-      setTimeout(() => {
-        setShowAnonymousNumbers(false);
-      }, duration * 1000);
+      // Room 데이터 업데이트
+      if (data.room) {
+        setRoomData(data.room);
+      }
+
+      // Phase별 초기화
+      if (data.phase === 'day') {
+        setHasVoted(false);
+        setVoteTarget(null);
+        setVoteStatus([]);
+      }
+
+      if (data.phase === 'night') {
+        setHasActed(false);
+        setNightTarget(null);
+      }
+
+      if (data.phase === 'final_words') {
+        setSuspectId(data.suspectId);
+      }
+
+      if (data.phase === 'execution_vote') {
+        setSuspectId(data.suspectId);
+        setExecutionVote(null);
+        setExecutionStatus({ killVotes: 0, liveVotes: 0 });
+      }
+
+      // Reveal phase 모달
+      if (data.phase === 'reveal' && data.players) {
+        const duration = data.duration || 5;
+        setNotification({
+          title: '🎭 플레이어 번호 공개',
+          content: (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                {data.players.map(p => (
+                  <div
+                    key={p.id}
+                    className={`p-3 rounded-lg ${
+                      p.id === socket.id
+                        ? 'bg-mafia-accent'
+                        : 'bg-mafia-secondary'
+                    }`}
+                  >
+                    <div className="text-3xl font-bold text-center">
+                      #{p.anonymousNumber}
+                    </div>
+                    {p.id === socket.id && (
+                      <div className="text-xs text-center text-mafia-gold">나</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="text-center text-xl">
+                {duration}초 후 게임 시작
+              </div>
+            </div>
+          ),
+          icon: '🎭'
+        });
+
+        setTimeout(() => {
+          setNotification(null);
+        }, duration * 1000);
+      }
     });
 
-    // 역할 배정 (백업용 - 혹시 개별 전송되면 받기)
-    socket.on('roleAssigned', ({ role, roleInfo }) => {
-      console.log('✅ Role assigned via event:', role, roleInfo);
-      setMyRole({ role, info: roleInfo });
+    return () => {
+      socket.off('phaseChanged');
+    };
+  }, [socket, setRoomData]);
+
+  // 타이머
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+
+    const interval = setInterval(() => {
+      setTimeLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeLeft]);
+
+  // 채팅 리스너
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('chatMessage', (msg) => {
+      setChatMessages(prev => [...prev, msg]);
     });
 
-    // 페이즈 변경
-    socket.on('phaseChanged', ({ phase, day, duration }) => {
-      setPhase(phase);
-      setDay(day);
-      setTimeLeft(duration);
+    socket.on('mafiaChat', (msg) => {
+      setMafiaMessages(prev => [...prev, msg]);
     });
 
-    // 밤 결과
-    socket.on('nightResults', (data) => {
-      // 데이터 구조 확인
-      const results = data?.results || data;
-      const room = data?.room;
+    return () => {
+      socket.off('chatMessage');
+      socket.off('mafiaChat');
+    };
+  }, [socket]);
 
+  // 자동 스크롤
+  useEffect(() => {
+    if (chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (mafiaChatRef.current) {
+      mafiaChatRef.current.scrollTop = mafiaChatRef.current.scrollHeight;
+    }
+  }, [mafiaMessages]);
+
+  // 투표 현황
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('voteStatusUpdate', ({ votes }) => {
+      setVoteStatus(votes);
+    });
+
+    return () => {
+      socket.off('voteStatusUpdate');
+    };
+  }, [socket]);
+
+  // 처형 투표 현황
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('executionVoteStatus', ({ killVotes, liveVotes }) => {
+      setExecutionStatus({ killVotes, liveVotes });
+    });
+
+    return () => {
+      socket.off('executionVoteStatus');
+    };
+  }, [socket]);
+
+  // 밤 결과
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('nightResults', ({ results, room }) => {
       if (room) setRoomData(room);
 
-      // 결과 알림
       const messages = [];
       if (results?.killed && results.killed.length > 0) {
         results.killed.forEach(victim => {
-          const victimDisplay = victim.name || `#${victim.anonymousNumber || victim.id}`;
-          messages.push(`💀 ${victimDisplay}님이 마피아에게 살해당했습니다!`);
+          messages.push(`💀 #${victim.anonymousNumber}번이 살해당했습니다!`);
         });
       }
       if (results?.saved && results.saved.length > 0) {
         messages.push('💉 의사가 누군가를 살렸습니다!');
       }
 
-      // 경찰 조사 결과 (경찰에게만 표시)
+      // 경찰 조사 결과 (경찰에게만)
       if (results?.investigated && results.investigated.length > 0) {
         results.investigated.forEach(inv => {
           if (inv.investigatorId === socket?.id) {
@@ -90,345 +222,409 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
       if (messages.length > 0) {
         setNotification({
           title: '🌙 밤 결과',
-          message: messages.join('\n'),
+          content: messages.join('\n'),
           icon: '🌙'
         });
+
+        setTimeout(() => setNotification(null), 5000);
       }
-    });
-
-    // 처형 결과
-    socket.on('playerExecuted', (data) => {
-      const { player, room } = data;
-      setRoomData(room);
-
-      if (data.executed && player) {
-        // 과반수 달성 - 처형됨
-        const playerDisplay = player.name || `#${player.anonymousNumber}`;
-        setNotification({
-          title: '⚖️ 처형 결과',
-          message: `${playerDisplay}님이 투표로 처형되었습니다!\n\n득표: ${data.votes}표 (필요: ${data.required}표)\n직업: ${player.role}`,
-          icon: '⚖️'
-        });
-      } else if (!data.executed && data.suspect) {
-        // 과반수 미달 - 처형 없음
-        const suspectDisplay = data.suspect.name || `#${data.suspect.anonymousNumber}`;
-        setNotification({
-          title: '⚖️ 처형 결과',
-          message: `과반수 미달로 처형되지 않았습니다.\n\n최다 득표: ${suspectDisplay} (${data.votes}표)\n필요 득표: ${data.required}표`,
-          icon: 'ℹ️'
-        });
-      } else {
-        // 아무도 투표 안함
-        setNotification({
-          title: '⚖️ 처형 결과',
-          message: '투표가 없어 아무도 처형되지 않았습니다.',
-          icon: 'ℹ️'
-        });
-      }
-    });
-
-    // 게임 종료
-    socket.on('gameOver', ({ winner, reason, room }) => {
-      setRoomData(room);
-      setGameOver({ winner, reason });
-    });
-
-    // 시간 스킵 투표
-    socket.on('timeSkipVoted', ({ votesNeeded, currentVotes }) => {
-      // 투표 현황 표시 가능
-    });
-
-    socket.on('timeSkipped', ({ phase }) => {
-      setPhase(phase);
-    });
-
-    // 채팅 메시지 수신 (즉시 업데이트)
-    socket.on('chatMessage', (message) => {
-      setRoomData(prev => ({
-        ...prev,
-        chatMessages: [...(prev.chatMessages || []), message]
-      }));
     });
 
     return () => {
-      socket.off('anonymousNumbersRevealed');
-      socket.off('roleAssigned');
-      socket.off('phaseChanged');
       socket.off('nightResults');
-      socket.off('playerExecuted');
-      socket.off('gameOver');
-      socket.off('timeSkipVoted');
-      socket.off('timeSkipped');
-      socket.off('chatMessage');
     };
   }, [socket, setRoomData]);
 
+  // 처형 결과
   useEffect(() => {
-    if (timeLeft > 0) {
-      const timer = setInterval(() => {
-        setTimeLeft(prev => Math.max(0, prev - 1));
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [timeLeft]);
+    if (!socket) return;
 
-  const handleVoteSkip = () => {
-    socket.emit('voteSkipTime', { roomId });
+    socket.on('executionResult', (data) => {
+      const { executed, player, killVotes, liveVotes, room } = data;
+      if (room) setRoomData(room);
+
+      if (executed && player) {
+        setNotification({
+          title: '⚖️ 처형 결과',
+          content: `#${player.anonymousNumber}번이 처형되었습니다!\n\n죽이기: ${killVotes}표\n살리기: ${liveVotes}표\n직업: ${player.role}`,
+          icon: '⚖️'
+        });
+      } else {
+        setNotification({
+          title: '⚖️ 처형 결과',
+          content: `처형되지 않았습니다.\n\n죽이기: ${killVotes}표\n살리기: ${liveVotes}표`,
+          icon: 'ℹ️'
+        });
+      }
+
+      setTimeout(() => setNotification(null), 5000);
+    });
+
+    return () => {
+      socket.off('executionResult');
+    };
+  }, [socket, setRoomData]);
+
+  // 게임 종료
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('gameOver', ({ winner, reason, room }) => {
+      if (room) setRoomData(room);
+      setGameOver({ winner, reason });
+    });
+
+    return () => {
+      socket.off('gameOver');
+    };
+  }, [socket, setRoomData]);
+
+  // 채팅 전송
+  const sendChat = (e) => {
+    e.preventDefault();
+    if (!message.trim()) return;
+    socket.emit('chatMessage', { roomId, message });
+    setMessage('');
   };
 
-  if (!roomData) {
+  const sendMafiaChat = (e) => {
+    e.preventDefault();
+    if (!message.trim()) return;
+    socket.emit('mafiaChat', { roomId, message });
+    setMessage('');
+  };
+
+  // 낮 투표
+  const handleDayVote = () => {
+    if (!voteTarget || hasVoted) return;
+    socket.emit('dayVote', { roomId, targetId: voteTarget });
+    setHasVoted(true);
+  };
+
+  // 밤 행동
+  const handleNightAction = () => {
+    if (!nightTarget || hasActed) return;
+
+    const action = {
+      action: myRole.role === 'mafia' ? 'kill' : myRole.role === 'doctor' ? 'save' : 'investigate',
+      targetId: nightTarget
+    };
+
+    socket.emit('nightAction', { roomId, action });
+    setHasActed(true);
+  };
+
+  // 처형 투표
+  const handleExecutionVote = (vote) => {
+    if (executionVote) return;
+    socket.emit('executionVote', { roomId, vote });
+    setExecutionVote(vote);
+  };
+
+  const currentPlayer = roomData?.players.find(p => p.id === socket?.id);
+  const isAlive = currentPlayer && !currentPlayer.isDead;
+
+  if (gameOver) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-mafia-accent mx-auto mb-4"></div>
-          <p className="text-mafia-light text-xl">게임 데이터 로딩 중...</p>
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-mafia-bg via-mafia-dark to-mafia-bg">
+        <div className="max-w-2xl w-full card text-center">
+          <h1 className="text-5xl font-bold mb-4">
+            {gameOver.winner === 'mafia' ? '🔪 마피아 승리!' : '👥 시민 승리!'}
+          </h1>
+          <p className="text-xl text-mafia-light mb-8">{gameOver.reason}</p>
+
+          <div className="space-y-3 mb-8">
+            {roomData?.players.map(p => (
+              <div key={p.id} className="flex justify-between items-center p-3 bg-mafia-secondary rounded-lg">
+                <span className="font-semibold">#{p.anonymousNumber} - {p.name}</span>
+                <span className={`px-3 py-1 rounded-full text-sm ${
+                  p.role === 'mafia' ? 'bg-red-500' : 'bg-blue-500'
+                }`}>
+                  {p.role}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={onLeave} className="btn-primary w-full">
+            로비로 돌아가기
+          </button>
         </div>
       </div>
     );
   }
 
   if (!myRole) {
-    console.log('⚠️ Role not assigned yet, roomData:', roomData);
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-mafia-bg via-mafia-dark to-mafia-bg">
+        <div className="card text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-mafia-accent mx-auto mb-4"></div>
           <p className="text-mafia-light text-xl">역할 배정 중...</p>
-          <p className="text-mafia-light text-sm mt-2 opacity-75">잠시만 기다려주세요</p>
         </div>
       </div>
     );
   }
 
-  // 익명 번호 공개 화면
-  if (showAnonymousNumbers) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-mafia-bg via-mafia-dark to-mafia-bg">
-        <div className="card backdrop-blur-sm max-w-4xl w-full">
-          <h1 className="text-4xl font-bold text-mafia-gold mb-2 text-center animate-pulse">
-            🎭 플레이어 번호 공개
-          </h1>
-          <p className="text-mafia-light text-center mb-8 text-lg">
-            게임 중에는 번호로만 식별됩니다
-          </p>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-8">
-            {anonymousPlayers.map(player => {
-              const playerData = roomData.players.find(p => p.id === player.id);
-              const isMe = player.id === socket?.id;
-
-              return (
-                <div
-                  key={player.id}
-                  className={`p-6 rounded-xl border-2 transition-all duration-300 ${
-                    isMe
-                      ? 'bg-gradient-to-br from-mafia-accent to-red-700 border-mafia-gold shadow-glow-primary scale-105'
-                      : 'bg-mafia-primary border-mafia-secondary/30 hover:border-mafia-accent/50'
-                  }`}
-                >
-                  <div className="text-center">
-                    <div className={`text-5xl font-bold mb-2 ${isMe ? 'text-white' : 'text-mafia-accent'}`}>
-                      {player.anonymousNumber}
-                    </div>
-                    {isMe && (
-                      <div className="text-mafia-gold text-sm font-semibold">
-                        나
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="text-center">
-            <div className="text-5xl font-bold text-mafia-gold mb-2 animate-pulse">
-              {timeLeft}
-            </div>
-            <p className="text-mafia-light text-xl">
-              초 후 첫날 아침이 시작됩니다
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const currentPlayer = roomData.players.find(p => p.id === socket?.id);
-  const isAlive = currentPlayer && !currentPlayer.isDead;
-
-  if (gameOver) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full card text-center">
-          <h1 className="text-5xl font-bold mb-4">
-            {gameOver.winner === 'mafia' ? '🔪 마피아 승리!' : '👥 시민 승리!'}
-          </h1>
-          <p className="text-xl text-mafia-light mb-6">{gameOver.reason}</p>
-
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold mb-4">최종 결과</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {roomData.players.map(player => (
-                <div
-                  key={player.id}
-                  className={`p-4 rounded-lg ${
-                    player.isDead
-                      ? 'bg-gray-700 opacity-50'
-                      : myRole.info.team === 'mafia' && player.role === 'mafia'
-                      ? 'bg-red-600'
-                      : 'bg-mafia-secondary'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">{player.name}</span>
-                    <span className="text-sm">
-                      {player.role === 'mafia' ? '🔪' :
-                       player.role === 'doctor' ? '💉' :
-                       player.role === 'police' ? '👮' : '👤'}
-                      {' '}{player.role}
-                    </span>
-                  </div>
-                  {player.isDead && <span className="text-xs text-gray-400">💀 사망</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => {
-                setGameOver(null);
-                window.location.href = '/funny/';
-              }}
-              className="flex-1 btn-primary"
-            >
-              🏠 홈으로
-            </button>
-            <button
-              onClick={() => {
-                setGameOver(null);
-                onLeave();
-              }}
-              className="flex-1 btn-secondary"
-            >
-              🔄 다시하기
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const alivePlayers = roomData?.players.filter(p => !p.isDead) || [];
 
   return (
     <>
-      <div className="min-h-screen p-4">
-        <div className="max-w-7xl mx-auto">
-        {/* 상단 헤더 */}
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-mafia-accent">🎭 마피아 게임</h1>
-            <div className="flex items-center gap-4 mt-2 text-mafia-light">
-              <span>방 코드: <strong className="font-mono">{roomId}</strong></span>
-              <span>Day {day}</span>
+      <div className="min-h-screen p-4 bg-gradient-to-br from-mafia-bg via-mafia-dark to-mafia-bg">
+        <div className="max-w-7xl mx-auto space-y-4">
+          {/* 헤더 */}
+          <div className="card">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold text-mafia-gold">
+                  {phase === 'reveal' && '🎭 플레이어 공개'}
+                  {phase === 'waiting' && '⏳ 대기실'}
+                  {phase === 'night' && '🌙 밤'}
+                  {phase === 'day' && '☀️ 낮'}
+                  {phase === 'final_words' && '💬 최후 변론'}
+                  {phase === 'execution_vote' && '⚖️ 처형 투표'}
+                </h2>
+                <p className="text-mafia-light">
+                  Day {day} | {timeLeft}초 남음
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-semibold">내 역할: {myRole.info?.name}</div>
+                <div className="text-sm text-mafia-light">{myRole.info?.description}</div>
+              </div>
             </div>
           </div>
-          <button
-            onClick={onLeave}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
-          >
-            🚪 나가기
-          </button>
-        </div>
 
-        {/* 내 역할 정보 */}
-        <RoleInfo role={myRole} isAlive={isAlive} />
+          {/* 메인 컨텐츠 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* 왼쪽: 채팅 */}
+            <div className="lg:col-span-2 space-y-4">
+              {/* 일반 채팅 */}
+              {phase !== 'night' && (
+                <div className="card h-96 flex flex-col">
+                  <h3 className="font-bold mb-3">💬 채팅</h3>
+                  <div ref={chatRef} className="flex-1 overflow-y-auto space-y-2 mb-3">
+                    {chatMessages.map((msg, i) => (
+                      <div key={i} className="p-2 bg-mafia-secondary rounded">
+                        <span className="font-bold text-mafia-accent">#{msg.anonymousNumber}: </span>
+                        <span className="text-mafia-light">{msg.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <form onSubmit={sendChat} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      className="input flex-1"
+                      placeholder="메시지 입력..."
+                      disabled={!isAlive}
+                    />
+                    <button type="submit" className="btn-primary" disabled={!isAlive}>
+                      전송
+                    </button>
+                  </form>
+                </div>
+              )}
 
-        {/* 페이즈 타이머 */}
-        <PhaseTimer
-          phase={phase}
-          timeLeft={timeLeft}
-          onVoteSkip={handleVoteSkip}
-        />
+              {/* 마피아 채팅 (밤에만) */}
+              {phase === 'night' && myRole.role === 'mafia' && (
+                <div className="card h-96 flex flex-col">
+                  <h3 className="font-bold mb-3 text-red-500">🔪 마피아 채팅</h3>
+                  <div ref={mafiaChatRef} className="flex-1 overflow-y-auto space-y-2 mb-3">
+                    {mafiaMessages.map((msg, i) => (
+                      <div key={i} className="p-2 bg-red-900/30 rounded">
+                        <span className="font-bold text-red-400">#{msg.anonymousNumber}: </span>
+                        <span className="text-mafia-light">{msg.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <form onSubmit={sendMafiaChat} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      className="input flex-1"
+                      placeholder="마피아 전용 메시지..."
+                      disabled={!isAlive}
+                    />
+                    <button type="submit" className="btn-primary bg-red-600 hover:bg-red-700" disabled={!isAlive}>
+                      전송
+                    </button>
+                  </form>
+                </div>
+              )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-          {/* 게임 영역 */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* 플레이어 목록 */}
-            <PlayerList
-              players={roomData.players}
-              myRole={myRole}
-              phase={phase}
-            />
+              {/* 밤에 일반 플레이어는 대기 */}
+              {phase === 'night' && myRole.role !== 'mafia' && (
+                <div className="card h-96 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="text-6xl mb-4">🌙</div>
+                    <h3 className="text-2xl font-bold mb-2">밤이 되었습니다</h3>
+                    <p className="text-mafia-light">밤에는 채팅을 사용할 수 없습니다</p>
+                  </div>
+                </div>
+              )}
+            </div>
 
-            {/* 행동 패널 */}
-            {isAlive && (
-              <>
-                {phase === 'day' && (
-                  <VotePanel
-                    socket={socket}
-                    roomId={roomId}
-                    players={roomData.players}
-                    currentPlayerId={socket.id}
-                  />
-                )}
+            {/* 오른쪽: 플레이어 & 액션 */}
+            <div className="space-y-4">
+              {/* 플레이어 목록 */}
+              <div className="card">
+                <h3 className="font-bold mb-3">👥 플레이어 ({alivePlayers.length}명)</h3>
+                <div className="space-y-2">
+                  {roomData?.players.map(p => (
+                    <div
+                      key={p.id}
+                      className={`p-2 rounded ${
+                        p.isDead ? 'bg-gray-700 opacity-50' : 'bg-mafia-secondary'
+                      } ${p.id === socket?.id ? 'border-2 border-mafia-gold' : ''}`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-mafia-accent">#{p.anonymousNumber}</span>
+                        {p.isDead && <span className="text-red-500">💀</span>}
+                        {p.id === socket?.id && <span className="text-mafia-gold text-xs">(나)</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-                {phase === 'night' && myRole.info.nightAction && (
-                  <NightActionPanel
-                    socket={socket}
-                    roomId={roomId}
-                    players={roomData.players}
-                    myRole={myRole}
-                    currentPlayerId={socket.id}
-                  />
-                )}
-              </>
-            )}
-          </div>
+              {/* 낮 투표 */}
+              {phase === 'day' && isAlive && (
+                <div className="card">
+                  <h3 className="font-bold mb-3">🗳️ 투표</h3>
+                  <select
+                    value={voteTarget || ''}
+                    onChange={(e) => setVoteTarget(e.target.value)}
+                    className="input w-full mb-3"
+                    disabled={hasVoted}
+                  >
+                    <option value="">투표할 플레이어 선택</option>
+                    {alivePlayers
+                      .filter(p => p.id !== socket?.id)
+                      .map(p => (
+                        <option key={p.id} value={p.id}>
+                          #{p.anonymousNumber}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    onClick={handleDayVote}
+                    className="btn-primary w-full"
+                    disabled={!voteTarget || hasVoted}
+                  >
+                    {hasVoted ? '✅ 투표 완료' : '투표하기'}
+                  </button>
 
-          {/* 채팅 */}
-          <div className="lg:col-span-1">
-            <ChatBox
-              socket={socket}
-              roomId={roomId}
-              playerName={playerName}
-              messages={roomData.chatMessages || []}
-              isAlive={isAlive}
-              phase={phase}
-              myRole={myRole}
-            />
+                  {/* 투표 현황 */}
+                  {voteStatus.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <h4 className="font-semibold">투표 현황</h4>
+                      {voteStatus.map(v => (
+                        <div key={v.targetId} className="text-sm">
+                          #{v.anonymousNumber}: {v.votes}표
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 밤 행동 */}
+              {phase === 'night' && isAlive && myRole.role !== 'citizen' && (
+                <div className="card">
+                  <h3 className="font-bold mb-3">
+                    {myRole.role === 'mafia' && '🔪 살해 대상'}
+                    {myRole.role === 'doctor' && '💉 보호 대상'}
+                    {myRole.role === 'police' && '👮 조사 대상'}
+                  </h3>
+                  <select
+                    value={nightTarget || ''}
+                    onChange={(e) => setNightTarget(e.target.value)}
+                    className="input w-full mb-3"
+                    disabled={hasActed}
+                  >
+                    <option value="">대상 선택</option>
+                    {alivePlayers
+                      .filter(p => myRole.role === 'mafia' ? p.role !== 'mafia' : p.id !== socket?.id)
+                      .map(p => (
+                        <option key={p.id} value={p.id}>
+                          #{p.anonymousNumber}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    onClick={handleNightAction}
+                    className="btn-primary w-full"
+                    disabled={!nightTarget || hasActed}
+                  >
+                    {hasActed ? '✅ 행동 완료' : '행동하기'}
+                  </button>
+                </div>
+              )}
+
+              {/* 최후 변론 */}
+              {phase === 'final_words' && (
+                <div className="card">
+                  <h3 className="font-bold mb-3">💬 최후 변론</h3>
+                  <div className="p-4 bg-mafia-secondary rounded-lg text-center">
+                    <div className="text-4xl mb-2">
+                      #{roomData?.players.find(p => p.id === suspectId)?.anonymousNumber}
+                    </div>
+                    <p className="text-mafia-light">최후 변론 중...</p>
+                  </div>
+                </div>
+              )}
+
+              {/* 처형 투표 */}
+              {phase === 'execution_vote' && isAlive && (
+                <div className="card">
+                  <h3 className="font-bold mb-3">⚖️ 처형 투표</h3>
+                  <div className="text-center mb-4">
+                    <div className="text-3xl mb-2">
+                      #{roomData?.players.find(p => p.id === suspectId)?.anonymousNumber}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => handleExecutionVote('kill')}
+                      className={`btn-primary bg-red-600 hover:bg-red-700 ${executionVote === 'kill' ? 'ring-2 ring-white' : ''}`}
+                      disabled={!!executionVote}
+                    >
+                      죽이기 ({executionStatus.killVotes})
+                    </button>
+                    <button
+                      onClick={() => handleExecutionVote('live')}
+                      className={`btn-primary bg-green-600 hover:bg-green-700 ${executionVote === 'live' ? 'ring-2 ring-white' : ''}`}
+                      disabled={!!executionVote}
+                    >
+                      살리기 ({executionStatus.liveVotes})
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    {/* 알림 모달 */}
-    {notification && (
-      <Modal
-        isOpen={true}
-        onClose={() => setNotification(null)}
-        title={notification.title}
-      >
-        <div className="text-center">
-          <div className="text-6xl mb-4">{notification.icon}</div>
-          <p className="text-mafia-light text-lg whitespace-pre-line">
-            {notification.message}
-          </p>
-          <button
-            onClick={() => setNotification(null)}
-            className="mt-6 btn-primary w-full"
-          >
-            확인
-          </button>
-        </div>
-      </Modal>
-    )}
+      {/* 모달 */}
+      {notification && (
+        <Modal
+          isOpen={true}
+          onClose={() => setNotification(null)}
+          title={notification.title}
+          icon={notification.icon}
+        >
+          <div className="whitespace-pre-line">{notification.content}</div>
+        </Modal>
+      )}
 
-    {/* 배경 음악 - phase에 따라 변경 */}
-    <BackgroundMusic
-      track={phase === 'night' ? `${import.meta.env.BASE_URL}night.mp3` : `${import.meta.env.BASE_URL}moring.mp3`}
-      volume={0.2}
-    />
+      {/* BGM */}
+      <BackgroundMusic
+        track={phase === 'night' ? `${import.meta.env.BASE_URL}night.mp3` : `${import.meta.env.BASE_URL}moring.mp3`}
+        volume={0.2}
+      />
     </>
   );
 }

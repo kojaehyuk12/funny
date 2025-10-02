@@ -4,26 +4,32 @@ export class Room {
   constructor(io, settings = {}) {
     this.io = io;
     this.id = this.generateRoomId();
-    this.players = new Map(); // socketId -> Player
-    this.chatMessages = [];
+    this.players = new Map();
+    this.chatMessages = []; // 일반 채팅
+    this.mafiaChat = []; // 마피아 전용 채팅
     this.status = 'waiting'; // waiting, playing, finished
-    this.phase = null; // day, night
+    this.phase = null; // reveal, waiting, night, night_result, day, vote_result, final_words, execution_vote
     this.day = 0;
     this.phaseTimer = null;
     this.nightActions = new Map();
     this.dayVotes = new Map();
-    this.skipTimeVotes = new Set();
+    this.executionVotes = new Map(); // 처형 투표
+    this.suspectId = null; // 최후 변론 대상자
 
     this.settings = {
-      minPlayers: settings.minPlayers || 1, // 1명으로 테스트 가능
+      minPlayers: settings.minPlayers || 1,
       maxPlayers: settings.maxPlayers || 12,
-      dayDuration: settings.dayDuration || 30, // 30초로 단축 (테스트용)
-      nightDuration: settings.nightDuration || 20, // 20초로 단축 (테스트용)
+      revealDuration: settings.revealDuration || 5, // 익명 번호 공개 시간
+      waitingDuration: settings.waitingDuration || 10, // 대기실 시간
+      nightDuration: settings.nightDuration || 30,
+      dayDuration: settings.dayDuration || 60,
+      finalWordsDuration: settings.finalWordsDuration || 30, // 최후 변론 시간
+      executionVoteDuration: settings.executionVoteDuration || 20, // 처형 투표 시간
       roles: settings.roles || {
-        mafia: 1, // 1명만
+        mafia: 1,
         doctor: 0,
         police: 0,
-        citizen: 0 // 나머지는 자동으로 시민
+        citizen: 0
       }
     };
   }
@@ -40,7 +46,7 @@ export class Room {
       isReady: false,
       role: null,
       isDead: false,
-      protectedBy: null,
+      anonymousNumber: null,
       votedFor: null
     };
 
@@ -59,13 +65,11 @@ export class Room {
   }
 
   updateSettings(newSettings) {
-    // 역할별 인원수 합산
     const numMafia = parseInt(newSettings.roles.mafia, 10) || 0;
     const numDoctor = parseInt(newSettings.roles.doctor, 10) || 0;
     const numPolice = parseInt(newSettings.roles.police, 10) || 0;
     const totalRoles = numMafia + numDoctor + numPolice;
 
-    // 최소 플레이어 수보다 역할 수가 많으면 안 됨
     if (totalRoles >= newSettings.minPlayers) {
       return { success: false, message: '역할의 총합은 최소 플레이어 수보다 적어야 합니다.' };
     }
@@ -81,46 +85,305 @@ export class Room {
     return { success: true };
   }
 
-  addChatMessage(message) {
-    this.chatMessages.push(message);
-
-    // 최대 100개 메시지만 유지
-    if (this.chatMessages.length > 100) {
-      this.chatMessages.shift();
+  addChatMessage(message, isMafiaChat = false) {
+    if (isMafiaChat) {
+      this.mafiaChat.push(message);
+      if (this.mafiaChat.length > 100) {
+        this.mafiaChat.shift();
+      }
+    } else {
+      this.chatMessages.push(message);
+      if (this.chatMessages.length > 100) {
+        this.chatMessages.shift();
+      }
     }
   }
 
+  // 게임 시작
   startGame() {
     this.status = 'playing';
     this.day = 1;
     this.assignRoles();
     this.assignAnonymousNumbers();
 
-    // 익명 번호 공개 페이즈 (5초)
-    this.io.to(this.id).emit('anonymousNumbersRevealed', {
+    // Phase 1: 익명 번호 공개 (5초)
+    this.phase = 'reveal';
+    this.io.to(this.id).emit('phaseChanged', {
+      phase: 'reveal',
+      day: this.day,
+      duration: this.settings.revealDuration,
+      room: this.getState(),
       players: Array.from(this.players.values()).map(p => ({
         id: p.id,
         anonymousNumber: p.anonymousNumber
-      })),
-      duration: 5
+      }))
     });
 
-    // 5초 후 첫날 아침 시작
+    setTimeout(() => {
+      this.startWaitingPhase();
+    }, this.settings.revealDuration * 1000);
+  }
+
+  // Phase 2: 대기실 (익명 번호로 채팅 가능)
+  startWaitingPhase() {
+    this.phase = 'waiting';
+    const duration = this.settings.waitingDuration;
+
+    this.io.to(this.id).emit('phaseChanged', {
+      phase: 'waiting',
+      day: this.day,
+      duration,
+      room: this.getState()
+    });
+
+    this.phaseTimer = setTimeout(() => {
+      this.startNightPhase();
+    }, duration * 1000);
+  }
+
+  // Phase 3: 밤 (마피아 채팅 + 능력 사용)
+  startNightPhase() {
+    this.phase = 'night';
+    this.nightActions.clear();
+    const duration = this.settings.nightDuration;
+
+    this.io.to(this.id).emit('phaseChanged', {
+      phase: 'night',
+      day: this.day,
+      duration,
+      room: this.getState()
+    });
+
+    this.phaseTimer = setTimeout(() => {
+      this.processNightActions();
+    }, duration * 1000);
+  }
+
+  // Phase 4: 밤 결과 표시
+  processNightActions() {
+    this.phase = 'night_result';
+    const results = {
+      killed: [],
+      saved: [],
+      investigated: []
+    };
+
+    // 1. 마피아 공격 (다수결)
+    const mafiaTargets = new Map();
+    this.nightActions.forEach((action, playerId) => {
+      const player = this.players.get(playerId);
+      if (player && player.role === 'mafia' && action.action === 'kill') {
+        const targetId = action.targetId;
+        mafiaTargets.set(targetId, (mafiaTargets.get(targetId) || 0) + 1);
+      }
+    });
+
+    let targetId = null;
+    let maxVotes = 0;
+    mafiaTargets.forEach((votes, tId) => {
+      if (votes > maxVotes) {
+        maxVotes = votes;
+        targetId = tId;
+      }
+    });
+
+    // 2. 의사 보호
+    let savedId = null;
+    this.nightActions.forEach((action, playerId) => {
+      const player = this.players.get(playerId);
+      if (player && player.role === 'doctor' && action.action === 'save') {
+        savedId = action.targetId;
+      }
+    });
+
+    // 3. 살해 vs 보호 처리
+    if (targetId && targetId !== savedId) {
+      const victim = this.players.get(targetId);
+      if (victim) {
+        victim.isDead = true;
+        results.killed.push({
+          id: victim.id,
+          anonymousNumber: victim.anonymousNumber
+        });
+      }
+    } else if (targetId && targetId === savedId) {
+      results.saved.push({ saved: true });
+    }
+
+    // 4. 경찰 조사
+    this.nightActions.forEach((action, playerId) => {
+      const player = this.players.get(playerId);
+      if (player && player.role === 'police' && action.action === 'investigate') {
+        const target = this.players.get(action.targetId);
+        if (target) {
+          const isMafia = target.role === 'mafia';
+          results.investigated.push({
+            investigatorId: playerId,
+            targetNumber: target.anonymousNumber,
+            result: isMafia ? '마피아입니다' : '시민입니다'
+          });
+        }
+      }
+    });
+
+    this.showNightResults(results);
+  }
+
+  showNightResults(results) {
+    this.io.to(this.id).emit('nightResults', {
+      results,
+      room: this.getState()
+    });
+
+    // 승리 조건 확인
+    if (this.checkWinCondition()) {
+      return;
+    }
+
+    // 3초 후 낮 시작
     setTimeout(() => {
       this.startDayPhase();
-    }, 5000);
+    }, 3000);
   }
 
-  assignAnonymousNumbers() {
-    const playerIds = Array.from(this.players.keys());
-    const shuffledNumbers = this.shuffleArray([...Array(playerIds.length).keys()].map(i => i + 1));
+  // Phase 5: 낮 (토론 + 투표)
+  startDayPhase() {
+    this.phase = 'day';
+    this.dayVotes.clear();
+    const duration = this.settings.dayDuration;
 
-    playerIds.forEach((playerId, index) => {
-      const player = this.players.get(playerId);
-      player.anonymousNumber = shuffledNumbers[index];
+    this.io.to(this.id).emit('phaseChanged', {
+      phase: 'day',
+      day: this.day,
+      duration,
+      room: this.getState()
     });
+
+    this.phaseTimer = setTimeout(() => {
+      this.processVotes();
+    }, duration * 1000);
   }
 
+  // Phase 6: 투표 결과 처리
+  processVotes() {
+    this.phase = 'vote_result';
+
+    // 투표 집계
+    const voteCounts = new Map();
+    this.dayVotes.forEach((targetId, voterId) => {
+      voteCounts.set(targetId, (voteCounts.get(targetId) || 0) + 1);
+    });
+
+    // 최다 득표자 찾기
+    let maxVotes = 0;
+    let suspectId = null;
+    voteCounts.forEach((votes, targetId) => {
+      if (votes > maxVotes) {
+        maxVotes = votes;
+        suspectId = targetId;
+      }
+    });
+
+    if (suspectId && maxVotes > 0) {
+      this.suspectId = suspectId;
+      this.startFinalWordsPhase();
+    } else {
+      // 아무도 투표 안함 -> 밤으로
+      this.day++;
+      setTimeout(() => {
+        this.startNightPhase();
+      }, 2000);
+    }
+  }
+
+  // Phase 7: 최후 변론
+  startFinalWordsPhase() {
+    this.phase = 'final_words';
+    const duration = this.settings.finalWordsDuration;
+
+    this.io.to(this.id).emit('phaseChanged', {
+      phase: 'final_words',
+      day: this.day,
+      duration,
+      suspectId: this.suspectId,
+      room: this.getState()
+    });
+
+    this.phaseTimer = setTimeout(() => {
+      this.startExecutionVote();
+    }, duration * 1000);
+  }
+
+  // Phase 8: 처형 투표 (살리기 vs 죽이기)
+  startExecutionVote() {
+    this.phase = 'execution_vote';
+    this.executionVotes.clear();
+    const duration = this.settings.executionVoteDuration;
+
+    this.io.to(this.id).emit('phaseChanged', {
+      phase: 'execution_vote',
+      day: this.day,
+      duration,
+      suspectId: this.suspectId,
+      room: this.getState()
+    });
+
+    this.phaseTimer = setTimeout(() => {
+      this.processExecutionVote();
+    }, duration * 1000);
+  }
+
+  processExecutionVote() {
+    let killVotes = 0;
+    let liveVotes = 0;
+
+    this.executionVotes.forEach(vote => {
+      if (vote === 'kill') killVotes++;
+      else if (vote === 'live') liveVotes++;
+    });
+
+    const suspect = this.players.get(this.suspectId);
+
+    // 죽이기가 더 많으면 처형
+    if (killVotes > liveVotes && suspect) {
+      suspect.isDead = true;
+
+      this.io.to(this.id).emit('executionResult', {
+        executed: true,
+        player: {
+          id: suspect.id,
+          anonymousNumber: suspect.anonymousNumber,
+          role: suspect.role
+        },
+        killVotes,
+        liveVotes,
+        room: this.getState()
+      });
+    } else {
+      this.io.to(this.id).emit('executionResult', {
+        executed: false,
+        killVotes,
+        liveVotes,
+        room: this.getState()
+      });
+    }
+
+    this.suspectId = null;
+    this.executionVotes.clear();
+
+    // 승리 조건 확인
+    if (this.checkWinCondition()) {
+      return;
+    }
+
+    // 다음 밤으로
+    this.day++;
+    setTimeout(() => {
+      this.startNightPhase();
+    }, 3000);
+  }
+
+  // 역할 배정
   assignRoles() {
     const playerIds = Array.from(this.players.keys());
     const shuffled = this.shuffleArray(playerIds);
@@ -128,7 +391,7 @@ export class Room {
     const roleAssignments = [];
     let index = 0;
 
-    // 마피아 배정
+    // 마피아
     for (let i = 0; i < this.settings.roles.mafia; i++) {
       if (index < shuffled.length) {
         roleAssignments.push({ playerId: shuffled[index], role: 'mafia' });
@@ -136,7 +399,7 @@ export class Room {
       }
     }
 
-    // 의사 배정
+    // 의사
     for (let i = 0; i < this.settings.roles.doctor; i++) {
       if (index < shuffled.length) {
         roleAssignments.push({ playerId: shuffled[index], role: 'doctor' });
@@ -144,7 +407,7 @@ export class Room {
       }
     }
 
-    // 경찰 배정
+    // 경찰
     for (let i = 0; i < this.settings.roles.police; i++) {
       if (index < shuffled.length) {
         roleAssignments.push({ playerId: shuffled[index], role: 'police' });
@@ -152,17 +415,29 @@ export class Room {
       }
     }
 
-    // 나머지는 시민
+    // 나머지 시민
     while (index < shuffled.length) {
       roleAssignments.push({ playerId: shuffled[index], role: 'citizen' });
       index++;
     }
 
-    // 역할 할당
     roleAssignments.forEach(({ playerId, role }) => {
       const player = this.players.get(playerId);
       if (player) {
         player.role = role;
+      }
+    });
+  }
+
+  // 익명 번호 배정
+  assignAnonymousNumbers() {
+    const playerIds = Array.from(this.players.keys());
+    const numbers = this.shuffleArray([...Array(playerIds.length).keys()].map(i => i + 1));
+
+    playerIds.forEach((playerId, index) => {
+      const player = this.players.get(playerId);
+      if (player) {
+        player.anonymousNumber = numbers[index];
       }
     });
   }
@@ -176,337 +451,113 @@ export class Room {
     return shuffled;
   }
 
-  startNightPhase() {
-    this.phase = 'night';
-    this.nightActions.clear();
-
-    this.io.to(this.id).emit('phaseChanged', {
-      phase: 'night',
-      day: this.day,
-      duration: this.settings.nightDuration
-    });
-
-    this.startPhaseTimer(this.settings.nightDuration);
-  }
-
-  startDayPhase() {
-    this.phase = 'day';
-    this.dayVotes.clear();
-    this.skipTimeVotes.clear();
-
-    this.io.to(this.id).emit('phaseChanged', {
-      phase: 'day',
-      day: this.day,
-      duration: this.settings.dayDuration
-    });
-
-    this.startPhaseTimer(this.settings.dayDuration);
-  }
-
-  startPhaseTimer(duration) {
-    if (this.phaseTimer) {
-      clearTimeout(this.phaseTimer);
-    }
-
-    this.phaseTimer = setTimeout(() => {
-      if (this.phase === 'night') {
-        const results = this.resolveNightActions();
-        this.io.to(this.id).emit('nightResults', {
-          results: results,
-          room: this.getState()
-        });
-
-        const gameResult = this.checkWinCondition();
-        if (!gameResult.isGameOver) {
-          this.startDayPhase();
-        }
-      } else if (this.phase === 'day') {
-        const executedPlayer = this.executeByVote();
-        this.io.to(this.id).emit('playerExecuted', {
-          player: executedPlayer,
-          room: this.getState()
-        });
-
-        const gameResult = this.checkWinCondition();
-        if (!gameResult.isGameOver) {
-          this.day++;
-          this.startNightPhase();
-        }
-      }
-    }, duration * 1000);
-  }
-
-  recordNightAction(playerId, action, targetId) {
+  // 낮 투표
+  handleDayVote(playerId, targetId) {
     const player = this.players.get(playerId);
-    if (!player || player.isDead) return;
-
-    this.nightActions.set(playerId, {
-      action,
-      targetId,
-      role: player.role
-    });
-  }
-
-  allNightActionsComplete() {
-    const activeRoles = ['mafia', 'doctor', 'police'];
-    let requiredActions = 0;
-
-    this.players.forEach(player => {
-      if (!player.isDead && activeRoles.includes(player.role)) {
-        requiredActions++;
-      }
-    });
-
-    // 1명일 경우 자동으로 완료 처리
-    if (this.players.size === 1) {
-      return true;
+    if (!player || player.isDead || this.phase !== 'day') {
+      return;
     }
 
-    return this.nightActions.size >= requiredActions;
-  }
+    this.dayVotes.set(playerId, targetId);
 
-  resolveNightActions() {
-    const results = {
-      killed: [],
-      saved: [],
-      investigated: []
-    };
-
-    let mafiaTarget = null;
-    let doctorTarget = null;
-    const policeInvestigations = [];
-
-    // 각 행동 수집
-    this.nightActions.forEach((action, playerId) => {
-      if (action.role === 'mafia' && action.action === 'kill') {
-        mafiaTarget = action.targetId;
-      } else if (action.role === 'doctor' && action.action === 'heal') {
-        doctorTarget = action.targetId;
-      } else if (action.role === 'police' && action.action === 'investigate') {
-        const target = this.players.get(action.targetId);
-        if (target) {
-          const isMafia = target.role === 'mafia';
-          policeInvestigations.push({
-            investigatorId: playerId,
-            targetId: action.targetId,
-            targetNumber: target.anonymousNumber,
-            isMafia: isMafia,
-            result: isMafia ? '마피아입니다' : '시민입니다'
-          });
-        }
-      }
+    // 투표 현황 브로드캐스트
+    const voteStatus = [];
+    const voteCounts = new Map();
+    this.dayVotes.forEach((tId) => {
+      voteCounts.set(tId, (voteCounts.get(tId) || 0) + 1);
     });
 
-    // 마피아 킬 처리
-    if (mafiaTarget && mafiaTarget !== doctorTarget) {
-      const targetPlayer = this.players.get(mafiaTarget);
-      if (targetPlayer) {
-        targetPlayer.isDead = true;
-        results.killed.push({
-          id: mafiaTarget,
-          name: targetPlayer.name
+    voteCounts.forEach((count, tId) => {
+      const target = this.players.get(tId);
+      if (target) {
+        voteStatus.push({
+          targetId: tId,
+          anonymousNumber: target.anonymousNumber,
+          votes: count
         });
       }
-    } else if (mafiaTarget && mafiaTarget === doctorTarget) {
-      // 마피아가 공격했지만 의사가 살린 경우에만 메시지 표시
-      results.saved.push(mafiaTarget);
-    }
-
-    // 경찰 조사 결과
-    results.investigated = policeInvestigations;
-
-    this.nightActions.clear();
-    return results;
-  }
-
-  voteDayExecution(voterId, targetId) {
-    const voter = this.players.get(voterId);
-    if (!voter || voter.isDead) return;
-
-    voter.votedFor = targetId;
-    this.dayVotes.set(voterId, targetId);
-  }
-
-  allPlayersVoted() {
-    let aliveCount = 0;
-    this.players.forEach(player => {
-      if (!player.isDead) aliveCount++;
     });
 
-    // 1명일 경우 자동으로 완료 (투표 스킵)
-    if (aliveCount === 1) {
+    this.io.to(this.id).emit('voteStatusUpdate', { votes: voteStatus });
+  }
+
+  // 밤 행동
+  handleNightAction(playerId, action) {
+    const player = this.players.get(playerId);
+    if (!player || player.isDead || this.phase !== 'night') {
+      return;
+    }
+
+    this.nightActions.set(playerId, action);
+  }
+
+  // 처형 투표
+  handleExecutionVote(playerId, vote) {
+    const player = this.players.get(playerId);
+    if (!player || player.isDead || this.phase !== 'execution_vote') {
+      return;
+    }
+
+    this.executionVotes.set(playerId, vote);
+
+    // 투표 현황 브로드캐스트
+    let killVotes = 0;
+    let liveVotes = 0;
+    this.executionVotes.forEach(v => {
+      if (v === 'kill') killVotes++;
+      else if (v === 'live') liveVotes++;
+    });
+
+    this.io.to(this.id).emit('executionVoteStatus', { killVotes, liveVotes });
+  }
+
+  // 승리 조건 확인
+  checkWinCondition() {
+    const alivePlayers = Array.from(this.players.values()).filter(p => !p.isDead);
+    const aliveMafia = alivePlayers.filter(p => p.role === 'mafia');
+    const aliveCitizens = alivePlayers.filter(p => p.role !== 'mafia');
+
+    let winner = null;
+    let reason = '';
+
+    if (aliveMafia.length === 0) {
+      winner = 'citizen';
+      reason = '모든 마피아가 제거되었습니다!';
+    } else if (aliveMafia.length >= aliveCitizens.length) {
+      winner = 'mafia';
+      reason = '마피아가 시민 수 이상이 되었습니다!';
+    }
+
+    if (winner) {
+      this.status = 'finished';
+      this.io.to(this.id).emit('gameOver', {
+        winner,
+        reason,
+        room: this.getState()
+      });
       return true;
     }
 
-    return this.dayVotes.size >= aliveCount;
+    return false;
   }
 
-  executeByVote() {
-    const voteCounts = new Map();
-    let aliveCount = 0;
-
-    this.players.forEach(p => {
-      if (!p.isDead) aliveCount++;
-    });
-
-    this.dayVotes.forEach(targetId => {
-      voteCounts.set(targetId, (voteCounts.get(targetId) || 0) + 1);
-    });
-
-    let maxVotes = 0;
-    let suspectId = null;
-
-    voteCounts.forEach((votes, playerId) => {
-      if (votes > maxVotes) {
-        maxVotes = votes;
-        suspectId = playerId;
-      }
-    });
-
-    // 과반수 확인
-    const suspect = suspectId ? this.players.get(suspectId) : null;
-    const majorityNeeded = Math.floor(aliveCount / 2) + 1;
-
-    if (suspect && maxVotes >= majorityNeeded) {
-      // 과반수 달성 - 처형 확정
-      suspect.isDead = true;
-      this.dayVotes.clear();
-      return {
-        executed: true,
-        player: suspect,
-        votes: maxVotes,
-        required: majorityNeeded
-      };
-    } else {
-      // 과반수 미달 - 처형 없음
-      this.dayVotes.clear();
-      return {
-        executed: false,
-        suspect: suspect ? { id: suspect.id, name: suspect.name, anonymousNumber: suspect.anonymousNumber } : null,
-        votes: maxVotes,
-        required: majorityNeeded
-      };
-    }
-  }
-
-  getVoteResults() {
-    const results = {};
-    this.dayVotes.forEach((targetId, voterId) => {
-      if (!results[targetId]) {
-        results[targetId] = [];
-      }
-      results[targetId].push(voterId);
-    });
-    return results;
-  }
-
-  voteSkipTime(playerId) {
-    this.skipTimeVotes.add(playerId);
-  }
-
-  shouldSkipTime() {
-    let aliveCount = 0;
-    this.players.forEach(player => {
-      if (!player.isDead) aliveCount++;
-    });
-
-    // 과반수 이상이 투표하면 스킵
-    return this.skipTimeVotes.size > aliveCount / 2;
-  }
-
-  getSkipVotesNeeded() {
-    let aliveCount = 0;
-    this.players.forEach(player => {
-      if (!player.isDead) aliveCount++;
-    });
-    return Math.floor(aliveCount / 2) + 1;
-  }
-
-  skipTime() {
-    if (this.phaseTimer) {
-      clearTimeout(this.phaseTimer);
-    }
-
-    if (this.phase === 'night') {
-      const results = this.resolveNightActions();
-      this.io.to(this.id).emit('nightResults', {
-        results: results,
-        room: this.getState()
-      });
-      this.startDayPhase();
-    } else {
-      const executed = this.executeByVote();
-      this.io.to(this.id).emit('playerExecuted', {
-        player: executed,
-        room: this.getState()
-      });
-      this.day++;
-      this.startNightPhase();
-    }
-
-    this.skipTimeVotes.clear();
-  }
-
-  checkWinCondition() {
-    let mafiaCount = 0;
-    let citizenCount = 0;
-
-    this.players.forEach(player => {
-      if (!player.isDead) {
-        if (player.role === 'mafia') {
-          mafiaCount++;
-        } else {
-          citizenCount++;
-        }
-      }
-    });
-
-    // 마피아가 시민보다 많거나 같으면 마피아 승리
-    if (mafiaCount >= citizenCount && mafiaCount > 0) {
-      this.status = 'finished';
-      return {
-        isGameOver: true,
-        winner: 'mafia',
-        reason: '마피아가 시민을 모두 제거했습니다.',
-        finalPlayers: this.getState(true).players // 실명과 역할 공개
-      };
-    }
-
-    // 마피아가 모두 죽으면 시민 승리
-    if (mafiaCount === 0) {
-      this.status = 'finished';
-      return {
-        isGameOver: true,
-        winner: 'citizen',
-        reason: '모든 마피아가 제거되었습니다.',
-        finalPlayers: this.getState(true).players // 실명과 역할 공개
-      };
-    }
-
-    return { isGameOver: false };
-  }
-
-  getRoleInfo(role) {
-    return GameRoles[role] || null;
-  }
-
-  getState(includeRoles = false) {
+  getState() {
     return {
       id: this.id,
       status: this.status,
       phase: this.phase,
       day: this.day,
-      settings: this.settings,
-      players: Array.from(this.players.values()).map(p => ({
-        id: p.id,
-        name: this.status === 'playing' && !includeRoles ? undefined : p.name, // 게임 중에는 이름 숨김
-        anonymousNumber: p.anonymousNumber,
-        isHost: p.isHost,
-        isReady: p.isReady,
-        isDead: p.isDead,
-        role: includeRoles ? p.role : undefined // 게임 종료 시에만 역할 공개
-      })),
-      chatMessages: this.chatMessages
+      players: Array.from(this.players.values()),
+      chatMessages: this.chatMessages,
+      mafiaChat: this.mafiaChat,
+      settings: this.settings
     };
+  }
+
+  cleanup() {
+    if (this.phaseTimer) {
+      clearTimeout(this.phaseTimer);
+      this.phaseTimer = null;
+    }
   }
 }
