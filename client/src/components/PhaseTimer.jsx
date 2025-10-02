@@ -5,7 +5,9 @@ export default function PhaseTimer({ phase, timeLeft, onVoteSkip }) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const percentage = timeLeft > 0 ? (timeLeft / (phase === 'day' ? 120 : 60)) * 100 : 0;
+  // 전체 시간 계산 (서버의 설정값과 동일)
+  const totalTime = phase === 'day' ? 30 : 20; // dayDuration: 30초, nightDuration: 20초
+  const percentage = timeLeft > 0 ? (timeLeft / totalTime) * 100 : 0;
 
   return (
     <div className="card">

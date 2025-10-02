@@ -5,6 +5,7 @@ import PlayerList from '../components/PlayerList';
 import PhaseTimer from '../components/PhaseTimer';
 import VotePanel from '../components/VotePanel';
 import NightActionPanel from '../components/NightActionPanel';
+import Modal from '../components/Modal';
 
 export default function Game({ socket, roomId, roomData, setRoomData, playerName, onLeave }) {
   const [myRole, setMyRole] = useState(null);
@@ -12,6 +13,7 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
   const [day, setDay] = useState(1);
   const [timeLeft, setTimeLeft] = useState(0);
   const [gameOver, setGameOver] = useState(null);
+  const [notification, setNotification] = useState(null);
 
   // roomData에서 내 역할 정보 추출
   useEffect(() => {
@@ -49,13 +51,22 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
       if (room) setRoomData(room);
 
       // 결과 알림
+      const messages = [];
       if (results?.killed && results.killed.length > 0) {
         results.killed.forEach(victim => {
-          alert(`💀 ${victim.name}님이 마피아에게 살해당했습니다!`);
+          messages.push(`💀 ${victim.name}님이 마피아에게 살해당했습니다!`);
         });
       }
       if (results?.saved && results.saved.length > 0) {
-        alert('💉 의사가 누군가를 살렸습니다!');
+        messages.push('💉 의사가 누군가를 살렸습니다!');
+      }
+
+      if (messages.length > 0) {
+        setNotification({
+          title: '🌙 밤 결과',
+          message: messages.join('\n'),
+          icon: '🌙'
+        });
       }
     });
 
@@ -63,9 +74,17 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
     socket.on('playerExecuted', ({ player, room }) => {
       setRoomData(room);
       if (player) {
-        alert(`⚖️ ${player.name}님이 투표로 처형되었습니다! (직업: ${player.role})`);
+        setNotification({
+          title: '⚖️ 처형 결과',
+          message: `${player.name}님이 투표로 처형되었습니다!\n\n직업: ${player.role}`,
+          icon: '⚖️'
+        });
       } else {
-        alert('⚖️ 동점으로 아무도 처형되지 않았습니다.');
+        setNotification({
+          title: '⚖️ 처형 결과',
+          message: '동점으로 아무도 처형되지 않았습니다.',
+          icon: '⚖️'
+        });
       }
     });
 
@@ -194,8 +213,9 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
   }
 
   return (
-    <div className="min-h-screen p-4">
-      <div className="max-w-7xl mx-auto">
+    <>
+      <div className="min-h-screen p-4">
+        <div className="max-w-7xl mx-auto">
         {/* 상단 헤더 */}
         <div className="flex justify-between items-start mb-6">
           <div>
@@ -267,10 +287,34 @@ export default function Game({ socket, roomId, roomData, setRoomData, playerName
               messages={roomData.chatMessages || []}
               isAlive={isAlive}
               phase={phase}
+              myRole={myRole}
             />
           </div>
         </div>
       </div>
     </div>
+
+    {/* 알림 모달 */}
+    {notification && (
+      <Modal
+        isOpen={true}
+        onClose={() => setNotification(null)}
+        title={notification.title}
+      >
+        <div className="text-center">
+          <div className="text-6xl mb-4">{notification.icon}</div>
+          <p className="text-mafia-light text-lg whitespace-pre-line">
+            {notification.message}
+          </p>
+          <button
+            onClick={() => setNotification(null)}
+            className="mt-6 btn-primary w-full"
+          >
+            확인
+          </button>
+        </div>
+      </Modal>
+    )}
+    </>
   );
 }

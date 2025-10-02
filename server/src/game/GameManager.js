@@ -65,17 +65,54 @@ export class GameManager {
     const player = room.players.get(socket.id);
     if (!player) return;
 
-    const chatMessage = {
-      id: Date.now(),
-      playerId: socket.id,
-      playerName: player.name,
-      message,
-      timestamp: new Date(),
-      type: 'normal'
-    };
+    // 사망자는 채팅 불가
+    if (player.isDead) {
+      socket.emit('error', { message: '사망한 플레이어는 채팅할 수 없습니다.' });
+      return;
+    }
 
-    room.addChatMessage(chatMessage);
-    this.io.to(roomId).emit('chatMessage', chatMessage);
+    // 밤 페이즈 체크
+    if (room.phase === 'night') {
+      // 마피아가 아니면 밤에 채팅 불가
+      if (player.role !== 'mafia') {
+        socket.emit('error', { message: '밤에는 마피아만 채팅할 수 있습니다.' });
+        return;
+      }
+
+      // 마피아 전용 채팅
+      const chatMessage = {
+        id: Date.now(),
+        playerId: socket.id,
+        playerName: player.name,
+        message,
+        timestamp: new Date(),
+        type: 'mafia' // 마피아 채팅임을 표시
+      };
+
+      room.addChatMessage(chatMessage);
+
+      // 마피아들에게만 전송
+      room.players.forEach((p, pId) => {
+        if (p.role === 'mafia') {
+          this.io.to(pId).emit('chatMessage', chatMessage);
+        }
+      });
+
+      console.log(`🔪 Mafia chat in ${roomId}: ${player.name}: ${message}`);
+    } else {
+      // 낮 페이즈는 전체 채팅
+      const chatMessage = {
+        id: Date.now(),
+        playerId: socket.id,
+        playerName: player.name,
+        message,
+        timestamp: new Date(),
+        type: 'normal'
+      };
+
+      room.addChatMessage(chatMessage);
+      this.io.to(roomId).emit('chatMessage', chatMessage);
+    }
   }
 
   startGame(socket, roomId) {
