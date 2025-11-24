@@ -86,19 +86,39 @@ function App() {
   const handleJoinRoom = (name, code) => {
     setPlayerName(name);
 
-    // 일단 마피아로 시도
-    socket.emit('joinRoom', {
-      roomId: code,
-      playerName: name
-    });
+    // 방 참가 시도 (마피아와 라이어 둘 다 시도)
+    const tryJoinMafia = () => {
+      socket.emit('joinRoom', {
+        roomId: code,
+        playerName: name
+      });
+    };
 
-    // 실패하면 라이어로 시도 (에러 처리에서)
-    socket.once('error', () => {
+    const tryJoinLiar = () => {
       socket.emit('joinLiarRoom', {
         roomId: code,
         playerName: name
       });
-    });
+    };
+
+    // 에러 핸들러 설정
+    const errorHandler = ({ message }) => {
+      if (message === '방을 찾을 수 없습니다.') {
+        // 마피아 방을 찾을 수 없으면 라이어 시도
+        socket.off('error', errorHandler);
+        tryJoinLiar();
+      }
+    };
+
+    socket.on('error', errorHandler);
+
+    // 먼저 마피아 방 시도
+    tryJoinMafia();
+
+    // 3초 후에도 응답이 없으면 에러 핸들러 제거
+    setTimeout(() => {
+      socket.off('error', errorHandler);
+    }, 3000);
   };
 
   const leaveRoom = () => {
