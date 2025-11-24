@@ -1,22 +1,31 @@
 import { useState, useEffect } from 'react';
 import { useSocket } from './hooks/useSocket';
 import GameSelect from './pages/GameSelect';
-import RoomList from './pages/RoomList';
+import CreateRoom from './pages/CreateRoom';
+import JoinRoom from './pages/JoinRoom';
 import Lobby from './pages/Lobby';
 import Game from './pages/Game';
 import LiarGame from './pages/LiarGame';
 
 function App() {
   const { socket, isConnected } = useSocket();
-  const [currentPage, setCurrentPage] = useState('gameSelect'); // gameSelect, roomList, lobby, game, liar
+  const [currentPage, setCurrentPage] = useState('home'); // home, create, join, lobby, game
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState(null);
   const [roomData, setRoomData] = useState(null);
   const [gameType, setGameType] = useState(null); // mafia or liar
 
-  const selectGame = (type) => {
-    setGameType(type);
-    setCurrentPage('roomList');
+  const goToCreateRoom = () => {
+    setCurrentPage('create');
+  };
+
+  const goToJoinRoom = () => {
+    setCurrentPage('join');
+  };
+
+  const backToHome = () => {
+    setCurrentPage('home');
+    setGameType(null);
   };
 
   useEffect(() => {
@@ -58,46 +67,45 @@ function App() {
     };
   }, [socket]);
 
-  const createRoom = (name, settings) => {
+  const handleCreateRoom = (name, type) => {
     setPlayerName(name);
-    if (gameType === 'mafia') {
+    setGameType(type);
+
+    if (type === 'mafia') {
       socket.emit('createRoom', {
         playerName: name,
-        roomSettings: settings || {}
+        roomSettings: {}
       });
-    } else if (gameType === 'liar') {
+    } else if (type === 'liar') {
       socket.emit('createLiarRoom', {
         playerName: name
       });
     }
   };
 
-  const joinRoom = (name, roomId) => {
+  const handleJoinRoom = (name, code) => {
     setPlayerName(name);
-    if (gameType === 'mafia') {
-      socket.emit('joinRoom', {
-        roomId,
-        playerName: name
-      });
-    } else if (gameType === 'liar') {
+
+    // 일단 마피아로 시도
+    socket.emit('joinRoom', {
+      roomId: code,
+      playerName: name
+    });
+
+    // 실패하면 라이어로 시도 (에러 처리에서)
+    socket.once('error', () => {
       socket.emit('joinLiarRoom', {
-        roomId,
+        roomId: code,
         playerName: name
       });
-    }
+    });
   };
 
   const leaveRoom = () => {
-    setCurrentPage('roomList');
+    setCurrentPage('home');
     setRoomId(null);
     setRoomData(null);
-  };
-
-  const backToGameSelect = () => {
-    setCurrentPage('gameSelect');
     setGameType(null);
-    setRoomId(null);
-    setRoomData(null);
   };
 
   if (!isConnected) {
@@ -113,17 +121,14 @@ function App() {
 
   return (
     <div className="min-h-screen bg-mafia-dark">
-      {currentPage === 'gameSelect' && (
-        <GameSelect onSelectGame={selectGame} />
+      {currentPage === 'home' && (
+        <GameSelect onCreateRoom={goToCreateRoom} onJoinRoom={goToJoinRoom} />
       )}
-      {currentPage === 'roomList' && (
-        <RoomList
-          socket={socket}
-          gameType={gameType}
-          onBack={backToGameSelect}
-          onCreateRoom={createRoom}
-          onJoinRoom={joinRoom}
-        />
+      {currentPage === 'create' && (
+        <CreateRoom onBack={backToHome} onCreate={handleCreateRoom} />
+      )}
+      {currentPage === 'join' && (
+        <JoinRoom onBack={backToHome} onJoin={handleJoinRoom} />
       )}
       {currentPage === 'lobby' && gameType === 'liar' && (
         <LiarGame

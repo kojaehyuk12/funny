@@ -9,7 +9,11 @@
       "Bash(git commit:*)",
       "Bash(del Game.jsx)",
       "Bash(ren:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(git init:*)",
+      "Bash(git branch:*)"
     ],
     "deny": [],
     "ask": []
