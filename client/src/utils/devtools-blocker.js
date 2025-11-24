@@ -1,5 +1,12 @@
-// F12 및 개발자 도구 방지
+// F12 및 개발자 도구 방지 (개발 중에는 비활성화)
 export function blockDevTools() {
+  // 개발 환경에서는 차단하지 않음
+  if (import.meta.env.DEV) {
+    console.log('🔧 개발 모드: 개발자 도구 차단 비활성화');
+    return;
+  }
+
+  // 프로덕션에서만 차단 활성화
   // F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U 차단
   document.addEventListener('keydown', (e) => {
     if (
@@ -17,24 +24,4 @@ export function blockDevTools() {
     e.preventDefault();
     return false;
   });
-
-  // 개발자 도구 열림 감지
-  const devtools = /./;
-  devtools.toString = function() {
-    this.opened = true;
-  };
-
-  setInterval(() => {
-    console.log(devtools);
-    console.clear();
-  }, 1000);
-
-  // 콘솔 함수 비활성화
-  if (typeof window !== 'undefined') {
-    window.console.log = () => {};
-    window.console.warn = () => {};
-    window.console.error = () => {};
-    window.console.info = () => {};
-    window.console.debug = () => {};
-  }
 }

@@ -96,9 +96,41 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 방 참가
+  // 통합 방 참가 (마피아 + 라이어 자동 판별)
   socket.on('joinRoom', ({ roomId, playerName }) => {
-    gameManager.joinRoom(socket, roomId, playerName);
+    console.log(`[통합] 방 참가 시도: ${roomId}, 플레이어: ${playerName}`);
+
+    // 먼저 마피아 방 확인
+    const mafiaRoom = gameManager.rooms.get(roomId);
+    if (mafiaRoom) {
+      console.log(`[통합] 마피아 방 발견: ${roomId}`);
+      gameManager.joinRoom(socket, roomId, playerName);
+      return;
+    }
+
+    // 마피아 방이 없으면 라이어 방 확인
+    const liarRoom = liarGameManager.rooms.get(roomId);
+    if (liarRoom) {
+      console.log(`[통합] 라이어 방 발견: ${roomId}`);
+      const result = liarGameManager.joinRoom(socket.id, playerName, roomId);
+      if (result.success) {
+        socket.join(roomId);
+        socket.emit('roomJoined', { roomId, room: result.room, gameType: 'liar' });
+        io.to(roomId).emit('playerJoined', { player: { id: socket.id, name: playerName }, room: result.room });
+
+        // 방 목록 업데이트
+        io.emit('roomListUpdate', {
+          rooms: [...gameManager.getRoomList(), ...liarGameManager.getRoomList()]
+        });
+      } else {
+        socket.emit('error', { message: result.message });
+      }
+      return;
+    }
+
+    // 둘 다 없으면 에러
+    console.log(`[통합] 방을 찾을 수 없음: ${roomId}`);
+    socket.emit('error', { message: '방을 찾을 수 없습니다.' });
   });
 
   // 일반 채팅
@@ -148,6 +180,7 @@ io.on('connection', (socket) => {
     try {
       const { roomId, room } = liarGameManager.createRoom(socket.id, playerName);
       socket.join(roomId);
+      console.log(`[라이어] 방 생성: ${roomId}, 호스트: ${playerName}`);
       socket.emit('roomCreated', { roomId, room });
 
       // 방 목록 업데이트 브로드캐스트
@@ -155,30 +188,12 @@ io.on('connection', (socket) => {
         rooms: [...gameManager.getRoomList(), ...liarGameManager.getRoomList()]
       });
     } catch (error) {
+      console.error('[라이어] 방 생성 실패:', error);
       socket.emit('error', { message: '방 생성 실패' });
     }
   });
 
-  // 라이어 방 참가
-  socket.on('joinLiarRoom', ({ roomId, playerName }) => {
-    try {
-      const result = liarGameManager.joinRoom(socket.id, playerName, roomId);
-      if (result.success) {
-        socket.join(roomId);
-        socket.emit('roomJoined', { roomId, room: result.room });
-        io.to(roomId).emit('playerJoined', { player: { id: socket.id, name: playerName }, room: result.room });
-
-        // 방 목록 업데이트 브로드캐스트
-        io.emit('roomListUpdate', {
-          rooms: [...gameManager.getRoomList(), ...liarGameManager.getRoomList()]
-        });
-      } else {
-        socket.emit('error', { message: result.message });
-      }
-    } catch (error) {
-      socket.emit('error', { message: '방 참가 실패' });
-    }
-  });
+  // [제거됨] joinLiarRoom - 이제 통합 joinRoom을 사용
 
   // 라이어 게임 시작
   socket.on('startLiarGame', ({ roomId }) => {
@@ -226,5 +241,5 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 
 httpServer.listen(PORT, () => {
-  // Server ready
+  console.log(`🚀 서버 시작: http://localhost:${PORT}`);
 });

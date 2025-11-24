@@ -38,13 +38,6 @@ function App() {
       setCurrentPage('lobby');
     });
 
-    // 방 참가 성공
-    socket.on('roomJoined', ({ roomId, room }) => {
-      setRoomId(roomId);
-      setRoomData(room);
-      setCurrentPage('lobby');
-    });
-
     // 게임 시작
     socket.on('gameStarted', ({ room, playerRoles }) => {
       setRoomData({
@@ -54,16 +47,9 @@ function App() {
       setCurrentPage('game');
     });
 
-    // 에러 처리
-    socket.on('error', ({ message }) => {
-      alert(message);
-    });
-
     return () => {
       socket.off('roomCreated');
-      socket.off('roomJoined');
       socket.off('gameStarted');
-      socket.off('error');
     };
   }, [socket]);
 
@@ -85,40 +71,38 @@ function App() {
 
   const handleJoinRoom = (name, code) => {
     setPlayerName(name);
+    console.log(`[클라이언트] 방 참가 시도: ${code}, 이름: ${name}`);
 
-    // 방 참가 시도 (마피아와 라이어 둘 다 시도)
-    const tryJoinMafia = () => {
-      socket.emit('joinRoom', {
-        roomId: code,
-        playerName: name
-      });
+    // 방 참가 성공 핸들러 (통합)
+    const joinSuccessHandler = ({ roomId, room, gameType }) => {
+      console.log(`[클라이언트] 방 참가 성공: ${roomId}, 게임 타입: ${gameType || 'mafia'}`);
+      setRoomId(roomId);
+      setRoomData(room);
+      setGameType(gameType || 'mafia'); // 서버에서 gameType 전달받음
+      setCurrentPage('lobby');
+
+      // 핸들러 정리
+      socket.off('roomJoined', joinSuccessHandler);
+      socket.off('error', errorHandler);
     };
 
-    const tryJoinLiar = () => {
-      socket.emit('joinLiarRoom', {
-        roomId: code,
-        playerName: name
-      });
-    };
-
-    // 에러 핸들러 설정
+    // 에러 핸들러 (통합)
     const errorHandler = ({ message }) => {
-      if (message === '방을 찾을 수 없습니다.') {
-        // 마피아 방을 찾을 수 없으면 라이어 시도
-        socket.off('error', errorHandler);
-        tryJoinLiar();
-      }
+      console.log(`[클라이언트] 방 참가 실패: ${message}`);
+      alert(message);
+      socket.off('roomJoined', joinSuccessHandler);
+      socket.off('error', errorHandler);
     };
 
+    // 핸들러 설정
+    socket.on('roomJoined', joinSuccessHandler);
     socket.on('error', errorHandler);
 
-    // 먼저 마피아 방 시도
-    tryJoinMafia();
-
-    // 3초 후에도 응답이 없으면 에러 핸들러 제거
-    setTimeout(() => {
-      socket.off('error', errorHandler);
-    }, 3000);
+    // 통합 방 참가 요청 (서버가 자동으로 마피아/라이어 판별)
+    socket.emit('joinRoom', {
+      roomId: code,
+      playerName: name
+    });
   };
 
   const leaveRoom = () => {

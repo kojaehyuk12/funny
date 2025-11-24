@@ -13,7 +13,17 @@
       "Bash(npm run dev:*)",
       "Bash(npm run build:*)",
       "Bash(git init:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd /c taskkill /F /PID 3224)",
+      "Bash(npm run deploy:*)",
+      "Bash(cmd /c \"taskkill /PID 19468 /F\")",
+      "Bash(cmd /c \"taskkill /F /IM node.exe\")",
+      "Bash(cmd /c \"taskkill /PID 3716 /F && timeout /t 2 /nobreak\")",
+      "Bash(Get-Process node -ErrorAction SilentlyContinue)",
+      "Bash(Stop-Process -Force)"
     ],
     "deny": [],
     "ask": []

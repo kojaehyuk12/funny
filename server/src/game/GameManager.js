@@ -62,7 +62,8 @@ export class GameManager {
     socket.join(roomId);
     socket.emit('roomJoined', {
       roomId,
-      room: room.getState()
+      room: room.getState(),
+      gameType: 'mafia' // 마피아 게임 타입 전달
     });
 
     this.io.to(roomId).emit('playerJoined', {
