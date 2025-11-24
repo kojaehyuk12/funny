@@ -6,6 +6,22 @@ export class LiarGameManager {
     this.rooms = new Map(); // roomId -> LiarRoom
   }
 
+  getRoomList() {
+    const roomList = [];
+    this.rooms.forEach((room) => {
+      const host = Array.from(room.players.values()).find(p => p.isHost);
+      roomList.push({
+        id: room.id,
+        gameType: 'liar',
+        status: room.status,
+        playerCount: room.players.size,
+        maxPlayers: 8, // 라이어 게임 최대 인원
+        host: host ? host.name : 'Unknown'
+      });
+    });
+    return roomList;
+  }
+
   createRoom(socketId, playerName) {
     const room = new LiarRoom(this.io);
     room.addPlayer(socketId, playerName, true); // 첫 플레이어는 호스트

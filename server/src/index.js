@@ -75,9 +75,25 @@ app.get('/api/rooms', (req, res) => {
 // Socket.IO 연결 처리
 io.on('connection', (socket) => {
 
+  // 방 목록 조회
+  socket.on('getRoomList', ({ gameType }) => {
+    const mafiaRooms = gameManager.getRoomList();
+    const liarRooms = liarGameManager.getRoomList();
+    const allRooms = [...mafiaRooms, ...liarRooms];
+
+    socket.emit('roomListUpdate', {
+      rooms: gameType ? allRooms.filter(r => r.gameType === gameType) : allRooms
+    });
+  });
+
   // 방 생성
   socket.on('createRoom', ({ playerName, roomSettings }) => {
     gameManager.createRoom(socket, playerName, roomSettings);
+
+    // 방 목록 업데이트 브로드캐스트
+    io.emit('roomListUpdate', {
+      rooms: [...gameManager.getRoomList(), ...liarGameManager.getRoomList()]
+    });
   });
 
   // 방 참가
@@ -133,6 +149,11 @@ io.on('connection', (socket) => {
       const { roomId, room } = liarGameManager.createRoom(socket.id, playerName);
       socket.join(roomId);
       socket.emit('roomCreated', { roomId, room });
+
+      // 방 목록 업데이트 브로드캐스트
+      io.emit('roomListUpdate', {
+        rooms: [...gameManager.getRoomList(), ...liarGameManager.getRoomList()]
+      });
     } catch (error) {
       socket.emit('error', { message: '방 생성 실패' });
     }
@@ -146,6 +167,11 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.emit('roomJoined', { roomId, room: result.room });
         io.to(roomId).emit('playerJoined', { player: { id: socket.id, name: playerName }, room: result.room });
+
+        // 방 목록 업데이트 브로드캐스트
+        io.emit('roomListUpdate', {
+          rooms: [...gameManager.getRoomList(), ...liarGameManager.getRoomList()]
+        });
       } else {
         socket.emit('error', { message: result.message });
       }

@@ -8,6 +8,22 @@ export class GameManager {
     this.playerRoomMap = new Map();
   }
 
+  getRoomList() {
+    const roomList = [];
+    this.rooms.forEach((room) => {
+      const host = Array.from(room.players.values()).find(p => p.isHost);
+      roomList.push({
+        id: room.id,
+        gameType: 'mafia',
+        status: room.status,
+        playerCount: room.players.size,
+        maxPlayers: room.settings.maxPlayers,
+        host: host ? host.name : 'Unknown'
+      });
+    });
+    return roomList;
+  }
+
   createRoom(socket, playerName, roomSettings) {
     const room = new Room(this.io, roomSettings);
     this.rooms.set(room.id, room);
